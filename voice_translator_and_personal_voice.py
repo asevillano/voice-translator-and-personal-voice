@@ -9,6 +9,7 @@ LANGUAGES = {
         "ca": ("ca-ES", "Catalan"),
         "de": ("de-DE", "German"),
         "en": ("en-US", "English"),
+        "es": ("en-ES", "Spanish"),
         "fr": ("fr", "French"),
         "ja": ("ja-JP", "Japanese"),
         "it": ("it-IT", "Italian"),
@@ -32,7 +33,7 @@ def main():
         translation_config.speech_recognition_language = ORIGIN_LANGUAGE
         langs = LANGUAGES.keys()
         for lang in langs:
-            print(f'lang: {lang}')
+            #print(f'lang: {lang}')
             translation_config.add_target_language(lang)
         print('Ready to translate from', translation_config.speech_recognition_language)
 
@@ -69,6 +70,10 @@ def TranslateVoice(targetLanguage):
     try:
         translation = result.translations[targetLanguage]
         print(f'translation: {translation}')
+
+        for lang in result.translations:
+            print(f'\t{lang}: {result.translations[lang]}')
+        
     except Exception as ex:
         print(ex)
 
