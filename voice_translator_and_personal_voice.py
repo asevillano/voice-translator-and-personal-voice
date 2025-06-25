@@ -15,6 +15,8 @@ LANGUAGES = {
         "pt": ("pt-PT", "Portuguese")
 }
 
+ORIGIN_LANGUAGE = 'en-US'  # Traducir desde Español. #"es-ES"
+
 def main():
     try:
         global speech_config
@@ -27,7 +29,7 @@ def main():
 
         # Configure translation
         translation_config = speech_sdk.translation.SpeechTranslationConfig(speech_key, speech_region)
-        translation_config.speech_recognition_language = 'es-ES' # Traducir desde Español. #'en-US'
+        translation_config.speech_recognition_language = ORIGIN_LANGUAGE
         langs = LANGUAGES.keys()
         for lang in langs:
             print(f'lang: {lang}')
