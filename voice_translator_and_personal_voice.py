@@ -78,7 +78,7 @@ def SynthesizePersonalVoice(targetLanguage):
     translation = TranslateVoice(targetLanguage)
 
     # Synthesize translation
-    speaker_profile_id = '43b2d9e8-8756-4e54-b72a-d26c7b52406f'
+    speaker_profile_id = os.getenv('SPEAKER_PROFILE_ID')
 
     # Use PhoenixLatestNeural if you want word boundary event
     language = LANGUAGES.get(targetLanguage, ("", ""))[0]
