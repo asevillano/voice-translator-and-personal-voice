@@ -216,7 +216,8 @@ st.caption("Azure Speech Translation  •  Automatic language detection  •  Pe
   
 st.write(  
     "Click **Start** and speak into your microphone. "  
-    "The system will transcribe, translate, and play back your sentence in the target language, and translate to every language in the list."  
+    "The system will transcribe, translate, and play back your sentence in the target language, "
+    "and translate it to every language in the list."  
 )  
   
 # Target language selection for translation and speech synthesis
