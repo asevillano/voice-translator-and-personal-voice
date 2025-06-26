@@ -15,5 +15,14 @@ Integrate the Azure Speech service to translate voice with the synthesis with Pe
 
 Annotate the speaker_profile_id provided when the Personal Voice service is created because is needed to sythesize with Personal Voice.
 
-4. Run the demo of voice translation and syntesis with Personal Voice with voice_translator_and_personal_voice.py, setting the required target languages in the contant LANGUAGES and the original language to translate from that is by default set to 'es-ES'.
+4. Run the demo of voice translation and syntesis with Personal Voice:
+
+Set the required target languages in the constant LANGUAGES.
+If you need to fix the original language set it in the constant ORIGIN_LANGUAGE.
+If you want automatic language detection set ORIGIN_LANGUAGE to None and set the constant AUTO_DETECT_LOCALES as the candidates languages.
+
+- Option 1 (black and white text interface): run `python voice_translator_and_personal_voice.py`
+
+- Option 2 (web interface): run `streamlit run voice_translator_and_personal_voice_app.py`
+<img src="./Demo.gif" alt="Video Demo"/>
 

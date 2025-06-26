@@ -211,6 +211,7 @@ st.markdown(
     unsafe_allow_html=True  
 )
 
+st.image("microsoft.png", width=100)
 st.title("🗣️ Speech-to-Speech Translator")  
 st.caption("Azure Speech Translation  •  Automatic language detection  •  Personal Voice")
   
