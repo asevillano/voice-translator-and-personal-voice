@@ -1,112 +1,230 @@
-from dotenv import load_dotenv
-from datetime import datetime
+"""  
+Speech-to-Speech translator with automatic source-language detection
+and using personal voice to synthesize the translation.
+-------------------------------------------------------------------  
+Requirements:  
+pip install azure-cognitiveservices-speech python-dotenv  
+Environment variables:  
+    SPEECH_KEY          => your Speech resource key  
+    SPEECH_REGION       => your Speech resource region 
+    SPEAKER_PROFILE_ID  => ID of the custom neural voice profile (optional)
+"""  
+  
+from dotenv import load_dotenv  
 import os
-
-# Import namespaces
-import azure.cognitiveservices.speech as speech_sdk
-
+import json
+import time
+import azure.cognitiveservices.speech as speech_sdk  
+  
+# ──────────────────────────────────────────────────────────────────────────────  
+# Working languages  
+#   key   -> ISO code used as the target when requesting translation  
+#   locale-> locale code used as a candidate for automatic language detection
+#   name  -> label to display on screen
+# ──────────────────────────────────────────────────────────────────────────────  
 LANGUAGES = {
-        "ca": ("ca-ES", "Catalan"),
-        "de": ("de-DE", "German"),
-        "en": ("en-US", "English"),
-        "es": ("en-ES", "Spanish"),
-        "fr": ("fr", "French"),
-        "ja": ("ja-JP", "Japanese"),
-        "it": ("it-IT", "Italian"),
-        "pt": ("pt-PT", "Portuguese")
+    "bg": ("bg-BG", "Bulgarian"),
+    "hr": ("hr-HR", "Croatian"),
+    "cs": ("cs-CZ", "Czech"),
+    "da": ("da-D", "Danish"),
+    "nl": ("nl-NL", "Dutch"),
+    "en": ("en-US", "English"),
+    "et": ("et-EE", "Estonian"),
+    "fi": ("fi-FI", "Finnish"),
+    "fr": ("fr-FR", "French"),
+    "de": ("de-DE", "German"),
+    "el": ("el-GR", "Greek"),
+    "hu": ("hu-HU", "Hungarian"),
+    "ga": ("ga-IE", "Irish"),
+    "it": ("it-IT", "Italian"),
+    "lv": ("lv-LV", "Latvian"),
+    "lt": ("lt-LT", "Lithuanian"),
+    "mt": ("mt-MT", "Maltese"),
+    "pl": ("pl-PL", "Polish"),
+    "pt": ("pt-PT", "Portuguese"),
+    "ro": ("ro-RO", "Romanian"),
+    "sk": ("sk-S", "Slovak"),
+    "sl": ("sl-SI", "Slovenian"),
+    "es": ("es-ES", "Spanish"),
+    "sv": ("sv-SE", "Swedish")
 }
 
-ORIGIN_LANGUAGE = 'en-US'  # Traducir desde Español. #"es-ES"
+# Source language for translation. Set None to use automatic detection.
+ORIGIN_LANGUAGE = None #'en-US'
 
-def main():
-    try:
-        global speech_config
-        global translation_config
-
-        # Get Configuration Settings
-        load_dotenv()
-        speech_key = os.getenv('SPEECH_KEY')
-        speech_region = os.getenv('SPEECH_REGION')
-
-        # Configure translation
-        translation_config = speech_sdk.translation.SpeechTranslationConfig(speech_key, speech_region)
+# List of languages to be passed to the service for automatic identification  
+AUTO_DETECT_LOCALES = ['en-US', 'es-ES', 'fr-FR', 'it-IT']
+if ORIGIN_LANGUAGE is None:
+    print("Languages for automatic detection:", AUTO_DETECT_LOCALES)
+  
+# ------------------------------------------------------------------------------  
+# Configuration initialization  
+# ------------------------------------------------------------------------------  
+def build_translation_config() -> speech_sdk.translation.SpeechTranslationConfig:  
+    load_dotenv(override=True)  # Load environment variables from .env file
+    speech_key = os.getenv("SPEECH_KEY")  
+    speech_region = os.getenv("SPEECH_REGION")  
+  
+    # Translation configuration  
+    translation_config = speech_sdk.translation.SpeechTranslationConfig(  
+        subscription=speech_key,  
+        region=speech_region,
+        #speech_recognition_language=ORIGIN_LANGUAGE
+    )  
+  
+    # Source language for translation
+    if ORIGIN_LANGUAGE is not None:
         translation_config.speech_recognition_language = ORIGIN_LANGUAGE
-        langs = LANGUAGES.keys()
-        for lang in langs:
-            #print(f'lang: {lang}')
-            translation_config.add_target_language(lang)
-        print('Ready to translate from', translation_config.speech_recognition_language)
 
-        # Configure speech
-        speech_config = speech_sdk.SpeechConfig(speech_key, speech_region)
+    # Languages available for translation (all keys in the dictionary)
+    for lang_code in LANGUAGES.keys():  
+        translation_config.add_target_language(lang_code)  
 
-        # Get user input
-        targetLanguage = ''
-        while targetLanguage != 'quit':
-            mensaje='\nEnter a target language:'
-            for id, (lang_code, language) in LANGUAGES.items():
-                mensaje += f"\n\t{id}: {language}"
-            mensaje += "\nEnter anything else to stop\n"
-            #targetLanguage = input('\nEnter a target language\n fr = French\n en = English\n pt = Portuguese\n Enter anything else to stop\n').lower()
-            targetLanguage = input(mensaje).lower()
+    # Audio configuration (default microphone)
+    audio_config = speech_sdk.AudioConfig(use_default_microphone=True) 
+  
+    # Configuration for automatic or fixed source language detection
+    if ORIGIN_LANGUAGE is None:
+        auto_config = speech_sdk.languageconfig.AutoDetectSourceLanguageConfig(languages=AUTO_DETECT_LOCALES)
+        # Translation recognizer with auto-detect  
+        recognizer = speech_sdk.translation.TranslationRecognizer(  
+            translation_config=translation_config,  
+            auto_detect_source_language_config=auto_config,  
+            audio_config=audio_config  
+        )
+    else:
+        # Fixed Language
+        recognizer = speech_sdk.translation.TranslationRecognizer(  
+            translation_config=translation_config,
+            audio_config=audio_config  
+        )
 
-            if targetLanguage in translation_config.target_languages:
-                SynthesizePersonalVoice(targetLanguage)
-            else:
-                targetLanguage = 'quit'
+    return recognizer
+  
+# ------------------------------------------------------------------------------  
+# Translation to target languages
+# ------------------------------------------------------------------------------  
+def translate_voice(recognizer, target_language: str) -> str:  
+  
+    print("Speak now…")
+    start = time.time()
+    result = recognizer.recognize_once_async().get()
+    #result = recognizer.recognize_once()
+    end = time.time()
+    #print(f"Execution time: {(end - start):.4f} segundos")
 
-    except Exception as ex:
-        print(ex)
+    # Evaluate the result 
+    if result.reason == speech_sdk.ResultReason.TranslatedSpeech:
+        if ORIGIN_LANGUAGE is None:
+            detected_lang = speech_sdk.AutoDetectSourceLanguageResult(result).language
+            json_result = json.loads(result.json)
+            #print(f"Result in JSON: {json.dumps(json_result, indent=2)}")  # Mostrar el JSON completo
+            confidence = json_result.get("SpeechPhrase", {}).get("PrimaryLanguage", {}).get("Confidence", None)
 
-def TranslateVoice(targetLanguage):
-    translation = ''
+            # Search for the language name
+            nombre_idioma = None
+            for short_code, values in LANGUAGES.items():
+                if detected_lang in values:
+                    nombre_idioma = next((v for v in values if "-" not in v), None)
+                    break
 
-    # Translate speech
-    audio_config = speech_sdk.AudioConfig(use_default_microphone=True)
-    translator = speech_sdk.translation.TranslationRecognizer(translation_config, audio_config = audio_config)
-    print("Speak now...")
-    result = translator.recognize_once_async().get()
-    print(f'Translating "{result.text}" to {LANGUAGES.get(targetLanguage, ("", ""))[1]}')
-    try:
-        translation = result.translations[targetLanguage]
-        print(f'translation: {translation}')
-
-        for lang in result.translations:
-            print(f'\t{lang}: {result.translations[lang]}')
+            print(f"Detected language → {nombre_idioma} with confidence {confidence}")  
         
-    except Exception as ex:
-        print(ex)
+        print(f"Recognized text → {result.text}")  
+        # Display the translated text for speech synthesis
+        translated_text = result.translations.get(target_language, "")  
+        print(f"Translation to {LANGUAGES.get(target_language, ("", ""))[1]} → {translated_text}")  
+  
+        # We also display all available translations
+        for lang in result.translations:
+            print(f'\t- {LANGUAGES.get(lang, ("", ""))[1]}: \t{result.translations[lang]}') 
+  
+        return translated_text  
+  
+    elif result.reason == speech_sdk.ResultReason.NoMatch:  
+        print("No speech could be recognized.")  
+    else:  # Cancelado o error  
+        cancellation_details = result.cancellation_details  
+        print(f"Operation cancelled: {cancellation_details.reason}")  
+        if cancellation_details.error_details:  
+            print(f"Error details: {cancellation_details.error_details}")  
+  
+    return ""  
+  
+  
+# ------------------------------------------------------------------------------  
+# Speech synthesis with Personal Voice Service  
+# ------------------------------------------------------------------------------  
+def synthesize_personal_voice(speech_config, text: str, target_language: str):  
+    if not text:  
+        return  
+  
+    speaker_profile_id = os.getenv("SPEAKER_PROFILE_ID")  # opcional  
+    locale = LANGUAGES[target_language][0]  
+  
+    ssml = f"""  
+    <speak version='1.0' xml:lang='en-US'  
+           xmlns='http://www.w3.org/2001/10/synthesis'  
+           xmlns:mstts='http://www.w3.org/2001/mstts'>  
+        <voice name='DragonLatestNeural'>  
+            <mstts:ttsembedding speakerProfileId='{speaker_profile_id}'/>  
+            <mstts:express-as style='Prompt'>  
+                <lang xml:lang='{locale}'> {text} </lang>  
+            </mstts:express-as>  
+        </voice>  
+    </speak>  
+    """  
+  
+    synthesizer = speech_sdk.SpeechSynthesizer(speech_config=speech_config)  
+  
+    def on_word_boundary(evt):  
+        print(f"WordBoundary → '{evt.text}' (offset: {evt.audio_offset/10000:.0f} ms)")  
+  
+    synthesizer.synthesis_word_boundary.connect(on_word_boundary)  
+  
+    result = synthesizer.speak_ssml_async(ssml).get()  
+    if result.reason != speech_sdk.ResultReason.SynthesizingAudioCompleted:  
+        print(f"Error during synthesis: {result.reason}")  
+  
+  
+# ------------------------------------------------------------------------------  
+# Main program  
+# ------------------------------------------------------------------------------  
+def main():  
+    try:  
+        recognizer = build_translation_config()  
+        speech_config = speech_sdk.SpeechConfig(  
+            subscription=os.getenv("SPEECH_KEY"),  
+            region=os.getenv("SPEECH_REGION")  
+        )   
 
-    return translation
+        while True:
+            print("\nAvailable languages for translation:")
 
-def SynthesizePersonalVoice(targetLanguage):
+            # Extract pairs (short code, language name)
+            pares = []
+            for code, values in LANGUAGES.items():
+                name = next((v for v in values if "-" not in v), "")
+                pares.append((code, name))
+            # Display in rows of 3 columns
+            for i in range(0, len(pares), 3):
+                fila = pares[i:i+3]
+                columnas = [f"{code} → {name:<10}" for code, name in fila]
+                print("  |  ".join(columnas))
 
-    # Voice translation
-    translation = TranslateVoice(targetLanguage)
+            target = input("Enter language to synthesize the translation (or 'quit' to exit): ").lower()  
+            if target == "quit":  
+                break  
+            if target not in LANGUAGES:  
+                print("Unsupported language.")  
+                continue  
 
-    # Synthesize translation
-    speaker_profile_id = os.getenv('SPEAKER_PROFILE_ID')
-
-    # Use PhoenixLatestNeural if you want word boundary event
-    language = LANGUAGES.get(targetLanguage, ("", ""))[0]
-    ssml = f"""<speak version='1.0' xml:lang='en-US' xmlns='http://www.w3.org/2001/10/synthesis' 
-            xmlns:mstts='http://www.w3.org/2001/mstts'> 
-            <voice name='DragonLatestNeural'> 
-            <mstts:ttsembedding speakerProfileId='{speaker_profile_id}'/> 
-            <mstts:express-as style='Prompt'> 
-            <lang xml:lang='{language}'> {translation} </lang> 
-            </mstts:express-as> 
-            </voice></speak>"""
-
-    def word_boundary(evt):
-        print(f"Word Boundary: Text='{evt.text}', Audio offset={evt.audio_offset / 10000}ms, Duration={evt.duration / 10000}ms, text={evt.text}")
-
-    speech_synthesizer = speech_sdk.SpeechSynthesizer(speech_config)
-    speech_synthesizer.synthesis_word_boundary.connect(word_boundary)
-    speak = speech_synthesizer.speak_ssml_async(ssml).get()
-
-    if speak.reason != speech_sdk.ResultReason.SynthesizingAudioCompleted:
-        print(speak.reason)
-
-if __name__ == "__main__":
-    main()
+            translated = translate_voice(recognizer, target)  
+            synthesize_personal_voice(speech_config, translated, target)  
+  
+    except Exception as ex:  
+        print(f"Se produjo una excepción: {ex}")  
+  
+  
+if __name__ == "__main__":  
+    main()  
