@@ -129,8 +129,15 @@ def recognition_worker(stop_event: threading.Event,
   
 # --------------------------- Streamlit UI ---------------------  
 st.set_page_config(page_title="Live Speech Translator", layout="wide")  
+st.image("microsoft.png", width=100)
 st.title("🎙️ Real-time Speech-to-Text & Translation")  
-  
+st.caption("Azure Speech Translation  •  Automatic language detection")
+
+st.write(  
+    "Click **Start** and speak into your microphone. "  
+    "The system will transcribe and translate your sentences in the target languages."
+)
+
 # ---- one-time session state initialisation ----  
 if "transcript" not in st.session_state:  
     st.session_state.transcript   = []          # list[str]  
