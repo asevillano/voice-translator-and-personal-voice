@@ -57,28 +57,34 @@ AUTO_DETECT_LOCALES = ["en-US", "es-ES", "fr-FR", "it-IT"]
   
 # ------------------- recognizer builder -----------------------  
 def build_recognizer() -> speechsdk.translation.TranslationRecognizer:  
-    cfg = speechsdk.translation.SpeechTranslationConfig(  
+    # Create a translation configuration
+    translation_cfg = speechsdk.translation.SpeechTranslationConfig(  
         subscription=speech_key,  
         endpoint=speech_endpoint,  
     )  
+    # Set the tarjet languages
     for code in LANGUAGES:  
-        cfg.add_target_language(code)  
+        translation_cfg.add_target_language(code)  
   
+    # Set the audio from default microphone
     audio_cfg = speechsdk.audio.AudioConfig(use_default_microphone=True)  
   
-    if ORIGIN_LANGUAGE is None:  
+    if ORIGIN_LANGUAGE is None:
+        # Auto-detect source language
         auto_cfg = speechsdk.languageconfig.AutoDetectSourceLanguageConfig(  
             languages=AUTO_DETECT_LOCALES  
-        )  
+        )
+        # Set the language detection mode to continuous
+        translation_cfg.set_property(property_id=speechsdk.PropertyId.SpeechServiceConnection_LanguageIdMode, value='Continuous')
         return speechsdk.translation.TranslationRecognizer(  
-            translation_config=cfg,  
+            translation_config=translation_cfg,  
             auto_detect_source_language_config=auto_cfg,  
             audio_config=audio_cfg,  
         )  
     else:  
-        cfg.speech_recognition_language = ORIGIN_LANGUAGE  
+        translation_cfg.speech_recognition_language = ORIGIN_LANGUAGE  
         return speechsdk.translation.TranslationRecognizer(  
-            translation_config=cfg,  
+            translation_config=translation_cfg,  
             audio_config=audio_cfg,  
         )  
   
@@ -104,12 +110,7 @@ def recognition_worker(stop_event: threading.Event,
   
         try:  
             json_result   = json.loads(evt.result.json)  
-            confidence    = (  
-                json_result  
-                .get("SpeechPhrase", {})  
-                .get("PrimaryLanguage", {})  
-                .get("Confidence", None)  
-            )  
+            confidence = json_result.get("SpeechPhrase", {}).get("PrimaryLanguage", {}).get("Confidence", None)
         except Exception:  
             confidence = None  
   
@@ -188,18 +189,11 @@ if st.button(button_label, type="primary"):
 lang  = st.session_state.status.get("language")  
 conf  = st.session_state.status.get("confidence")  
   
-if lang:  
-    if isinstance(conf, (int, float)):  
-        conf_disp = f"{conf*100:.1f}%"  
-    elif conf is not None:  
-        conf_disp = str(conf)  
-    else:  
-        conf_disp = "―"  
-  
-    st.markdown(  
-        f"**Detected language:** {lang}  • "  
-        f"**Confidence:** {conf_disp}"  
-    )  
+if lang:
+    if conf == "Unknown":
+        st.markdown(f"**Detected language:** {lang}")
+    else:
+        st.markdown(f"**Detected language:** {lang}  • **Confidence:** {conf}")  
 else:  
     st.write("")     # empty spacer so layout stays stable  
   

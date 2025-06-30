@@ -20,7 +20,7 @@ from pathlib import Path
 import streamlit as st  
 from dotenv import load_dotenv  
 import azure.cognitiveservices.speech as speech_sdk  
-  
+import textwrap
   
 # ───────────────────────────────────────────────────────────────────────────────  
 # Target anguages
@@ -56,7 +56,7 @@ LANGUAGES: dict[str, tuple[str, str]] = {
 }  
   
 # Source Language. None = automatic detection 
-ORIGIN_LANGUAGE: str | None = None     # e.g., "en-US" to force English
+ORIGIN_LANGUAGE: str | None = "en-US" #None     # e.g., "en-US" to force English
 AUTO_DETECT_LOCALES: list[str] = ["en-US", "es-ES", "fr-FR", "it-IT"]
   
 # ═══════════════════════════════════════════════════════════════════════════════  
@@ -196,6 +196,7 @@ def synthesize(text: str, target_lang: str) -> None:
 # ═══════════════════════════════════════════════════════════════════════════════  
 st.set_page_config("Speech-to-Speech Translator", "🗣️", layout="wide")  
 
+# CSS style for text areas
 st.markdown(  
     """  
     <style>  
@@ -211,6 +212,24 @@ st.markdown(
     unsafe_allow_html=True  
 )
 
+# CSS for sidebar width
+st.markdown(
+"""
+    <style>
+        /* Ajusta el ancho de la sidebar */
+            [data-testid="stSidebar"] {
+                min-width: 240px;
+                max-width: 240px;
+        }
+        [data-testid="stSidebarContent"] {
+            padding: 1rem;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+
 st.image("microsoft.png", width=100)
 st.title("🗣️ Speech-to-Speech Translator")  
 st.caption("Azure Speech Translation  •  Automatic language detection  •  Personal Voice")
@@ -223,9 +242,17 @@ st.write(
   
 # Target language selection for translation and speech synthesis
 codes_names = [f"{code} - {name}" for code, (_, name) in LANGUAGES.items()]  
-selection = st.selectbox("Target language", codes_names, index=codes_names.index("en - English"))  
+selection = st.selectbox("Target language for systhesis", codes_names, index=codes_names.index("en - English"))  
 target_code = selection.split(" - ")[0]  
-  
+
+with st.sidebar:
+    st.markdown("### Settings")
+    detect_language = st.checkbox('Detect language', True, help=f"Automatically detect the language between {', '.join(AUTO_DETECT_LOCALES)} or set it to {ORIGIN_LANGUAGE}.")
+    if not detect_language:
+        ORIGIN_LANGUAGE = st.selectbox("Source language:", 
+                                       [f"{code}" for code in AUTO_DETECT_LOCALES],
+                                       index=0)  # Default to the first language (English)
+
 # Main button  
 if st.button("🎙️ Start recording"):  
     recognizer = get_recognizer()  
@@ -242,14 +269,9 @@ if st.button("🎙️ Start recording"):
     # Results
     col1, col2 = st.columns([2, 3], gap="large")
     with col1:  
-        st.subheader("🔎 Recognized text")  
-        st.text_area(
-            label="Recognized text",  
-            value=result.text or "—",
-            height=180,
-            disabled=True, 
-            label_visibility="collapsed",
-        ) 
+        st.subheader("🔎 Recognized text")
+        st.code(f"{result.text}" or "—", language="text", wrap_lines=True)
+        #st.text_area(label="Recognized text", value=result.text or "—", height=180, disabled=True, label_visibility="collapsed") 
 
         if ORIGIN_LANGUAGE is None:
             json_result = json.loads(result.json) 
@@ -260,10 +282,11 @@ if st.button("🎙️ Start recording"):
         st.subheader(f"💬 Translations")
         translations = f"{LANGUAGES[target_code][1]}: {translated}"
         for lang in result.translations:
-            translations = translations + f'\n- {LANGUAGES.get(lang, ("", ""))[1]}: \t{result.translations[lang]}' 
-        st.code(f"{translations}" or "—", language="text")  
+            translations = translations + f'\n- {LANGUAGES.get(lang, ("", ""))[1]}: {result.translations[lang]}' 
+        st.code(f"{translations}" or "—", language="text", wrap_lines=True)
+        #st.text_area(label="Translations", value=f"{translations}" or "—", height=500, label_visibility="collapsed")
 
-    #st.write(f"⏱️ Tiempo de proceso: {elapsed:.2f} s")  
+    st.write(f"⏱️ Tiempo de proceso: {elapsed:.2f} s")  
   
     # Synthesis  
     with st.spinner("Synthesizing…"):  
