@@ -20,7 +20,6 @@ from pathlib import Path
 import streamlit as st  
 from dotenv import load_dotenv  
 import azure.cognitiveservices.speech as speech_sdk  
-import textwrap
   
 # ───────────────────────────────────────────────────────────────────────────────  
 # Target languages
@@ -56,9 +55,9 @@ LANGUAGES: dict[str, tuple[str, str]] = {
 }  
   
 # Source Language. None = automatic detection 
-ORIGIN_LANGUAGE: str | None = "en-US" #None     # e.g., "en-US" to force English
 AUTO_DETECT_LOCALES: list[str] = ["en-US", "es-ES", "fr-FR", "it-IT"]
-  
+source_language = "en-US"
+
 # ═══════════════════════════════════════════════════════════════════════════════  
 #  Utils  
 # ═══════════════════════════════════════════════════════════════════════════════  
@@ -84,8 +83,8 @@ def get_recognizer() -> speech_sdk.translation.TranslationRecognizer:
     )  
   
     # Recognition language (automatic or fixed)
-    if ORIGIN_LANGUAGE is not None:  
-        translation_config.speech_recognition_language = ORIGIN_LANGUAGE  
+    if not detect_language: # Fixed language
+        translation_config.speech_recognition_language = source_language  
   
     # Target languages
     for lang_code in LANGUAGES.keys():  
@@ -95,7 +94,7 @@ def get_recognizer() -> speech_sdk.translation.TranslationRecognizer:
     audio_config = speech_sdk.AudioConfig(use_default_microphone=True)  
   
     # Recognizer configuration  
-    if ORIGIN_LANGUAGE is None:  
+    if detect_language:  # Automatic language detection
         auto_cfg = speech_sdk.languageconfig.AutoDetectSourceLanguageConfig(  
             languages=AUTO_DETECT_LOCALES  
         )  
@@ -136,10 +135,7 @@ def translate_once(recognizer: speech_sdk.translation.TranslationRecognizer,
     result = recognizer.recognize_once_async().get()  
   
     if result.reason == speech_sdk.ResultReason.TranslatedSpeech:  
-        detected_lang = (  
-            speech_sdk.AutoDetectSourceLanguageResult(result).language  
-            if ORIGIN_LANGUAGE is None else ORIGIN_LANGUAGE  
-        )  
+        detected_lang = speech_sdk.AutoDetectSourceLanguageResult(result).language  
         translated_text = result.translations.get(target_lang, "")  
         return detected_lang, result, translated_text  
   
@@ -230,13 +226,13 @@ st.write(
 with st.sidebar:
     st.markdown("### Settings")
     
-    detect_language = st.checkbox('Detect language', True, help=f"Automatically detect the language between {', '.join(AUTO_DETECT_LOCALES)} or set it to {ORIGIN_LANGUAGE}.")
+    detect_language = st.checkbox('Detect language', True, help=f"Automatically detect the language between {', '.join(AUTO_DETECT_LOCALES)} or set it to {source_language}.")
     if not detect_language:
-        ORIGIN_LANGUAGE = st.selectbox("Source language:", 
+        source_language = st.selectbox("Source language:", 
                                        [f"{code}" for code in AUTO_DETECT_LOCALES],
                                        index=0)  # Default to the first language (English)
 
-        # Target language selection for translation and speech synthesis
+    # Target language selection for translation and speech synthesis
     codes_names = [f"{code} - {name}" for code, (_, name) in LANGUAGES.items()]  
     selection = st.selectbox("Target language for systhesis", codes_names, index=codes_names.index("en - English"))  
     target_code = selection.split(" - ")[0]  
@@ -260,7 +256,7 @@ if st.button("🎙️ Start recording"):
         st.subheader("🔎 Recognized text")
         st.markdown(f"{result.text}" or "—")
 
-        if ORIGIN_LANGUAGE is None:
+        if detect_language:
             json_result = json.loads(result.json) 
             confidence = json_result.get("SpeechPhrase", {}).get("PrimaryLanguage", {}).get("Confidence", None)
             st.write(f"Detected language: **{det_lang}** with confidence **{confidence}**")  
