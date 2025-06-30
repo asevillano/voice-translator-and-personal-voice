@@ -23,7 +23,7 @@ import azure.cognitiveservices.speech as speech_sdk
 import textwrap
   
 # ───────────────────────────────────────────────────────────────────────────────  
-# Target anguages
+# Target languages
 # key    -> ISO code of the target language for translation
 # locale -> locale code used as a candidate for automatic detection  
 # name   -> display name  
@@ -121,7 +121,9 @@ def get_speech_config() -> speech_sdk.SpeechConfig:
     speech_region = os.getenv("SPEECH_REGION")  
     return speech_sdk.SpeechConfig(subscription=speech_key, region=speech_region)  
   
-  
+# ═══════════════════════════════════════════════════════════════════════════════  
+#  Translation and Recognition of one phrase
+# ═══════════════════════════════════════════════════════════════════════════════  
 def translate_once(recognizer: speech_sdk.translation.TranslationRecognizer,  
                    target_lang: str) -> tuple[str, str, str]:  
     """  
@@ -146,7 +148,9 @@ def translate_once(recognizer: speech_sdk.translation.TranslationRecognizer,
     else:  
         raise RuntimeError(result.cancellation_details.error_details)  
   
-  
+# ═══════════════════════════════════════════════════════════════════════════════  
+#  Voice Synthesis with Personal Voice
+# ═══════════════════════════════════════════════════════════════════════════════    
 def synthesize(text: str, target_lang: str) -> None:  
     """  
     Synthesizes the text using Personal Voice (if available) and plays it through the default speaker.
@@ -222,19 +226,20 @@ st.write(
     "The system will transcribe, translate, and play back your sentence in the target language, "
     "and translate it to every language in the list."  
 )  
-  
-# Target language selection for translation and speech synthesis
-codes_names = [f"{code} - {name}" for code, (_, name) in LANGUAGES.items()]  
-selection = st.selectbox("Target language for systhesis", codes_names, index=codes_names.index("en - English"))  
-target_code = selection.split(" - ")[0]  
 
 with st.sidebar:
     st.markdown("### Settings")
+    
     detect_language = st.checkbox('Detect language', True, help=f"Automatically detect the language between {', '.join(AUTO_DETECT_LOCALES)} or set it to {ORIGIN_LANGUAGE}.")
     if not detect_language:
         ORIGIN_LANGUAGE = st.selectbox("Source language:", 
                                        [f"{code}" for code in AUTO_DETECT_LOCALES],
                                        index=0)  # Default to the first language (English)
+
+        # Target language selection for translation and speech synthesis
+    codes_names = [f"{code} - {name}" for code, (_, name) in LANGUAGES.items()]  
+    selection = st.selectbox("Target language for systhesis", codes_names, index=codes_names.index("en - English"))  
+    target_code = selection.split(" - ")[0]  
 
 # Main button  
 if st.button("🎙️ Start recording"):  
