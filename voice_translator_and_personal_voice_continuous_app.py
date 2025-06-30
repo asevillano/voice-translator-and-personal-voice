@@ -53,7 +53,7 @@ LANGUAGES = {
 }  
   
 ORIGIN_LANGUAGE     = None                       # None → auto-detect  
-AUTO_DETECT_LOCALES = ["en-US", "es-ES", "fr-FR", "it-IT"]  
+AUTO_DETECT_LOCALES = ["en-US", "es-ES", "fr-FR", "it-IT", "de-DE", "pt-PT", "nl-NL", "pl-PL", "ru-RU", "ja-JP"]  
   
 # ------------------- recognizer builder -----------------------  
 def build_recognizer() -> speechsdk.translation.TranslationRecognizer:  
@@ -129,6 +129,23 @@ def recognition_worker(stop_event: threading.Event,
     recognizer.stop_continuous_recognition()  
   
 # --------------------------- Streamlit UI ---------------------  
+# CSS for sidebar width
+st.markdown(
+"""
+    <style>
+        /* Ajusta el ancho de la sidebar */
+            [data-testid="stSidebar"] {
+                min-width: 240px;
+                max-width: 240px;
+        }
+        [data-testid="stSidebarContent"] {
+            padding: 1rem;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 st.set_page_config(page_title="Live Speech Translator", layout="wide")  
 st.image("microsoft.png", width=100)
 st.title("🎙️ Real-time Speech-to-Text & Translation")  
@@ -138,6 +155,14 @@ st.write(
     "Click **Start** and speak into your microphone. "  
     "The system will transcribe and translate your sentences in the target languages."
 )
+
+with st.sidebar:
+    st.markdown("### Settings")
+    detect_language = st.checkbox('Detect language', True, help=f"Automatically detect the language between {', '.join(AUTO_DETECT_LOCALES)} or set it to {ORIGIN_LANGUAGE}.")
+    if not detect_language:
+        ORIGIN_LANGUAGE = st.selectbox("Source language:", 
+                                       [f"{code}" for code in AUTO_DETECT_LOCALES],
+                                       index=0)  # Default to the first language (English)
 
 # ---- one-time session state initialisation ----  
 if "transcript" not in st.session_state:  
@@ -225,8 +250,10 @@ with col_r:
         for idx, tdict in enumerate(st.session_state.translation):  
             num = total - idx  
             st.markdown(f"**Sentence {num}**")  
+            translations=""
             for lang_code, txt in tdict.items():  
-                st.write(f"{LANGUAGES.get(lang_code, ("", ""))[1]}: {txt}")  
+                translations += f"- {LANGUAGES.get(lang_code, ("", ""))[1]}: {txt}\n" 
+            st.write(translations)  
             st.write("---")  
     else:  
         st.info("Translations will appear here.")  

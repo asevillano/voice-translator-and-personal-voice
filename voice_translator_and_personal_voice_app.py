@@ -196,22 +196,6 @@ def synthesize(text: str, target_lang: str) -> None:
 # ═══════════════════════════════════════════════════════════════════════════════  
 st.set_page_config("Speech-to-Speech Translator", "🗣️", layout="wide")  
 
-# CSS style for text areas
-st.markdown(  
-    """  
-    <style>  
-    /* Applies to every st.text_area in the application */  
-    div[data-testid="stTextArea"] textarea {  
-        background-color: #ffffff !important;   /* white background */  
-        color:            #000000 !important;   /* black text       */  
-        font-family:      monospace;            /* optional         */
-        line-height:      1.35;  
-    }  
-    </style>  
-    """,  
-    unsafe_allow_html=True  
-)
-
 # CSS for sidebar width
 st.markdown(
 """
@@ -228,7 +212,6 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-
 
 st.image("microsoft.png", width=100)
 st.title("🗣️ Speech-to-Speech Translator")  
@@ -270,8 +253,7 @@ if st.button("🎙️ Start recording"):
     col1, col2 = st.columns([2, 3], gap="large")
     with col1:  
         st.subheader("🔎 Recognized text")
-        st.code(f"{result.text}" or "—", language="text", wrap_lines=True)
-        #st.text_area(label="Recognized text", value=result.text or "—", height=180, disabled=True, label_visibility="collapsed") 
+        st.markdown(f"{result.text}" or "—")
 
         if ORIGIN_LANGUAGE is None:
             json_result = json.loads(result.json) 
@@ -283,8 +265,7 @@ if st.button("🎙️ Start recording"):
         translations = f"{LANGUAGES[target_code][1]}: {translated}"
         for lang in result.translations:
             translations = translations + f'\n- {LANGUAGES.get(lang, ("", ""))[1]}: {result.translations[lang]}' 
-        st.code(f"{translations}" or "—", language="text", wrap_lines=True)
-        #st.text_area(label="Translations", value=f"{translations}" or "—", height=500, label_visibility="collapsed")
+        st.write(f"{translations}" or "—")
 
     st.write(f"⏱️ Tiempo de proceso: {elapsed:.2f} s")  
   
