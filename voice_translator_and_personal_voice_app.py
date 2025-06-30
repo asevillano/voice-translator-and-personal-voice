@@ -57,24 +57,22 @@ LANGUAGES: dict[str, tuple[str, str]] = {
 # Source Language. None = automatic detection 
 AUTO_DETECT_LOCALES: list[str] = ["en-US", "es-ES", "fr-FR", "it-IT"]
 source_language = "en-US"
+synthetize_translation = True  # Whether to synthesize the translation or not
+load_dotenv(override=True)  
+
+speech_key   = os.getenv("SPEECH_KEY")  
+speech_region = os.getenv("SPEECH_REGION")  
+
+if not speech_key or not speech_region:  
+    st.error("You must specify SPEECH_KEY and SPEECH_REGION in environment variables or in a .env file.")  
+    st.stop() 
 
 # ═══════════════════════════════════════════════════════════════════════════════  
 #  Utils  
-# ═══════════════════════════════════════════════════════════════════════════════  
-@st.cache_resource(show_spinner=False)  
+# ═══════════════════════════════════════════════════════════════════════════════ 
+# Returns a recognizer prepared for translation
 def get_recognizer() -> speech_sdk.translation.TranslationRecognizer:  
-    """  
-    Returns a recognizer prepared for translation. 
-    It is cached between Streamlit reloads with @st.cache_resource.
-    """  
-    load_dotenv(override=True)  
-  
-    speech_key   = os.getenv("SPEECH_KEY")  
-    speech_region = os.getenv("SPEECH_REGION")  
-  
-    if not speech_key or not speech_region:  
-        st.error("You must specify SPEECH_KEY and SPEECH_REGION in environment variables or in a .env file.")  
-        st.stop()  
+    global source_language, detect_language, AUTO_DETECT_LOCALES
   
     # Translation configuration
     translation_config = speech_sdk.translation.SpeechTranslationConfig(  
@@ -115,9 +113,6 @@ def get_recognizer() -> speech_sdk.translation.TranslationRecognizer:
 @st.cache_resource(show_spinner=False)  
 def get_speech_config() -> speech_sdk.SpeechConfig:  
     # SpeechConfig for synthesis (also cached between reloads)
-    load_dotenv(override=True)  
-    speech_key   = os.getenv("SPEECH_KEY")  
-    speech_region = os.getenv("SPEECH_REGION")  
     return speech_sdk.SpeechConfig(subscription=speech_key, region=speech_region)  
   
 # ═══════════════════════════════════════════════════════════════════════════════  
@@ -202,8 +197,8 @@ st.markdown(
     <style>
         /* Ajusta el ancho de la sidebar */
             [data-testid="stSidebar"] {
-                min-width: 240px;
-                max-width: 240px;
+                min-width: 270px;
+                max-width: 270px;
         }
         [data-testid="stSidebarContent"] {
             padding: 1rem;
@@ -232,10 +227,14 @@ with st.sidebar:
                                        [f"{code}" for code in AUTO_DETECT_LOCALES],
                                        index=0)  # Default to the first language (English)
 
-    # Target language selection for translation and speech synthesis
-    codes_names = [f"{code} - {name}" for code, (_, name) in LANGUAGES.items()]  
-    selection = st.selectbox("Target language for systhesis", codes_names, index=codes_names.index("en - English"))  
-    target_code = selection.split(" - ")[0]  
+    synthetize_translation = st.checkbox("Synthesize translation", True, help="Whether to synthesize the translation into the target language or not.")
+    if synthetize_translation:
+        # Target language selection for translation and speech synthesis
+        codes_names = [f"{code} - {name}" for code, (_, name) in LANGUAGES.items()]  
+        selection = st.selectbox("Target language for systhesis", codes_names, index=codes_names.index("en - English"))  
+        target_code = selection.split(" - ")[0]
+    else:
+        target_code = "en"
 
 # Main button  
 if st.button("🎙️ Start recording"):  
@@ -268,14 +267,15 @@ if st.button("🎙️ Start recording"):
             translations = translations + f'\n- {LANGUAGES.get(lang, ("", ""))[1]}: {result.translations[lang]}' 
         st.write(f"{translations}" or "—")
 
-    st.write(f"⏱️ Tiempo de proceso: {elapsed:.2f} s")  
+    #st.write(f"⏱️ Tiempo de proceso: {elapsed:.2f} s")  
   
-    # Synthesis  
-    with st.spinner("Synthesizing…"):  
-        try:  
-            synthesize(translated, target_code)  
-        except Exception as ex:  
-            st.error(f"❌ Synthesis error: {ex}")  
+    if synthetize_translation:
+        # Synthesis  
+        with st.spinner("Synthesizing…"):  
+            try:  
+                synthesize(translated, target_code)  
+            except Exception as ex:  
+                st.error(f"❌ Synthesis error: {ex}")  
   
 st.markdown("---")  
 st.caption("© 2025 - Demo developed with Streamlit and Azure Speech Service")  
