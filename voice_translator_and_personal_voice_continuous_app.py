@@ -7,9 +7,9 @@ import time
 import json  
 import threading  
 from dotenv import load_dotenv  
-  
 import streamlit as st  
-from streamlit_autorefresh import st_autorefresh  
+from streamlit_autorefresh import st_autorefresh
+from utils import *
   
 # --------------- Streamlit version–independent rerun ----------  
 def do_rerun():  
@@ -29,32 +29,15 @@ except ImportError:
 load_dotenv(override=True)  
 speech_key    = os.getenv("SPEECH_KEY")  
 speech_region = os.getenv("SPEECH_REGION")  
-  
 if not (speech_key and speech_region):  
     st.error("Missing SPEECH_KEY and/or SPEECH_REGION environment variables.")  
     st.stop()  
-  
 speech_endpoint = f"https://{speech_region}.api.cognitive.microsoft.com"  
-  
-# ------------------------- Languages --------------------------  
-LANGUAGES = {  
-    "bg": ("bg-BG", "Bulgarian"),   "hr": ("hr-HR", "Croatian"),  
-    "cs": ("cs-CZ", "Czech"),       "da": ("da-D",  "Danish"),  
-    "nl": ("nl-NL", "Dutch"),       "en": ("en-US", "English"),  
-    "et": ("et-EE", "Estonian"),    "fi": ("fi-FI", "Finnish"),  
-    "fr": ("fr-FR", "French"),      "de": ("de-DE", "German"),  
-    "el": ("el-GR", "Greek"),       "hu": ("hu-HU", "Hungarian"),  
-    "ga": ("ga-IE", "Irish"),       "it": ("it-IT", "Italian"),  
-    "lv": ("lv-LV", "Latvian"),     "lt": ("lt-LT", "Lithuanian"),  
-    "mt": ("mt-MT", "Maltese"),     "pl": ("pl-PL", "Polish"),  
-    "pt": ("pt-PT", "Portuguese"),  "ro": ("ro-RO", "Romanian"),  
-    "sk": ("sk-S",  "Slovak"),      "sl": ("sl-SI", "Slovenian"),  
-    "es": ("es-ES", "Spanish"),     "sv": ("sv-SE", "Swedish"),  
-}  
-  
+
+# Constants
 ORIGIN_LANGUAGE     = None                       # None → auto-detect  
 AUTO_DETECT_LOCALES = ["en-US", "es-ES", "fr-FR", "it-IT", "de-DE", "pt-PT", "nl-NL", "pl-PL", "ru-RU", "ja-JP"]  
-  
+
 # ------------------- recognizer builder -----------------------  
 def build_recognizer() -> speechsdk.translation.TranslationRecognizer:  
     # Create a translation configuration
@@ -216,9 +199,9 @@ conf  = st.session_state.status.get("confidence")
   
 if lang:
     if conf == "Unknown":
-        st.markdown(f"**Detected language:** {lang}")
+        st.markdown(f"**Detected language:** {get_language_name(lang)}")
     else:
-        st.markdown(f"**Detected language:** {lang}  • **Confidence:** {conf}")  
+        st.markdown(f"**Detected language:** {get_language_name(lang)}  • **Confidence:** {conf}")  
 else:  
     st.write("")     # empty spacer so layout stays stable  
   
