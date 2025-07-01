@@ -225,7 +225,7 @@ if st.button("🎙️ Start recording"):
         if detect_language:
             json_result = json.loads(result.json) 
             confidence = json_result.get("SpeechPhrase", {}).get("PrimaryLanguage", {}).get("Confidence", None)
-            st.write(f"Detected language: **{det_lang}** with confidence **{confidence}**")  
+            st.write(f"**Detected language:** {get_language_name(det_lang)}  • **Confidence:** {confidence}")
   
     with col2:  
         st.subheader(f"💬 Translations")
