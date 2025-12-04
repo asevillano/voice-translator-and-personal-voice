@@ -23,8 +23,16 @@ from utils import *
 
 # Source Language. None = automatic detection 
 AUTO_DETECT_LOCALES: list[str] = ["en-US", "es-ES", "fr-FR", "it-IT"]
-source_language = "en-US"
+source_language = "es-ES"
 synthetize_translation = True  # Whether to synthesize the translation or not
+
+# Voice options for TTS
+VOICE_OPTIONS = {
+    "Ximena (Spanish Female)": "es-ES-Ximena:DragonHDLatestNeural",
+    "Tristan (Spanish Male)": "es-ES-Tristan:DragonHDLatestNeural",
+    "Personal Voice": "personal"
+}
+
 load_dotenv(override=True)  
 
 speech_key   = os.getenv("SPEECH_KEY")  
@@ -35,53 +43,68 @@ if not speech_key or not speech_region:
     st.stop() 
 
 # ═══════════════════════════════════════════════════════════════════════════════  
+#  Cached configs for optimal performance
+# ═══════════════════════════════════════════════════════════════════════════════
+@st.cache_resource(show_spinner=False)
+def get_speech_config() -> speech_sdk.SpeechConfig:
+    """SpeechConfig for synthesis (cached between reloads)"""
+    return speech_sdk.SpeechConfig(subscription=speech_key, region=speech_region)
+
+@st.cache_resource(show_spinner=False)
+def get_audio_input_config() -> speech_sdk.AudioConfig:
+    """AudioConfig for microphone (cached for reuse)"""
+    return speech_sdk.AudioConfig(use_default_microphone=True)
+
+@st.cache_resource(show_spinner=False)
+def get_audio_output_config() -> speech_sdk.audio.AudioOutputConfig:
+    """AudioOutputConfig for speaker (cached for reuse)"""
+    return speech_sdk.audio.AudioOutputConfig(use_default_speaker=True)
+
+# ═══════════════════════════════════════════════════════════════════════════════  
 #  Utils  
 # ═══════════════════════════════════════════════════════════════════════════════ 
 # Returns a recognizer prepared for translation
-def get_recognizer() -> speech_sdk.translation.TranslationRecognizer:  
-    global source_language, detect_language, AUTO_DETECT_LOCALES
-  
-    # Translation configuration
-    translation_config = speech_sdk.translation.SpeechTranslationConfig(  
-        subscription=speech_key,  
-        region=speech_region,  
-    )  
-  
-    # Recognition language (automatic or fixed)
-    if not detect_language: # Fixed language
-        translation_config.speech_recognition_language = source_language  
-  
-    # Target languages
-    for lang_code in LANGUAGES.keys():  
-        translation_config.add_target_language(lang_code)  
-  
-    # Default microphone  
-    audio_config = speech_sdk.AudioConfig(use_default_microphone=True)  
-  
-    # Recognizer configuration  
+def build_recognizer(detect_language: bool, source_language: str) -> speech_sdk.translation.TranslationRecognizer:  
+    """
+    Builds a recognizer prepared for translation using cached configs.
+    Note: Cannot cache recognizer itself as it maintains state.
+    """
+    # Create new translation config (lightweight operation)
+    translation_config = speech_sdk.translation.SpeechTranslationConfig(
+        subscription=speech_key,
+        region=speech_region,
+    )
+    
+    # Add all target languages
+    for lang_code in LANGUAGES.keys():
+        translation_config.add_target_language(lang_code)
+    
+    # Set recognition language (automatic or fixed)
+    if not detect_language:
+        translation_config.speech_recognition_language = source_language
+    
+    # Use cached audio config for microphone (this is the expensive part)
+    audio_config = get_audio_input_config()
+    
+    # Recognizer configuration
     if detect_language:  # Automatic language detection
-        auto_cfg = speech_sdk.languageconfig.AutoDetectSourceLanguageConfig(  
-            languages=AUTO_DETECT_LOCALES  
-        )  
-        recognizer = speech_sdk.translation.TranslationRecognizer(  
-            translation_config=translation_config,  
-            auto_detect_source_language_config=auto_cfg,  
-            audio_config=audio_config,  
-        )  
-    else:  
-        recognizer = speech_sdk.translation.TranslationRecognizer(  
-            translation_config=translation_config,  
-            audio_config=audio_config,  
-        )  
-  
+        auto_cfg = speech_sdk.languageconfig.AutoDetectSourceLanguageConfig(
+            languages=AUTO_DETECT_LOCALES
+        )
+        recognizer = speech_sdk.translation.TranslationRecognizer(
+            translation_config=translation_config,
+            auto_detect_source_language_config=auto_cfg,
+            audio_config=audio_config,
+        )
+    else:
+        recognizer = speech_sdk.translation.TranslationRecognizer(
+            translation_config=translation_config,
+            audio_config=audio_config,
+        )
+    
     return recognizer  
   
-  
-@st.cache_resource(show_spinner=False)  
-def get_speech_config() -> speech_sdk.SpeechConfig:  
-    # SpeechConfig for synthesis (also cached between reloads)
-    return speech_sdk.SpeechConfig(subscription=speech_key, region=speech_region)  
-  
+
 # ═══════════════════════════════════════════════════════════════════════════════  
 #  Translation and Recognition of one phrase
 # ═══════════════════════════════════════════════════════════════════════════════  
@@ -108,48 +131,67 @@ def translate_once(recognizer: speech_sdk.translation.TranslationRecognizer,
   
 # ═══════════════════════════════════════════════════════════════════════════════  
 #  Voice Synthesis with Personal Voice
-# ═══════════════════════════════════════════════════════════════════════════════    
-def synthesize(text: str, target_lang: str) -> None:  
-    """  
-    Synthesizes the text using Personal Voice (if available) and plays it through the default speaker.
-    Additionally, it stores the audio in memory and sends it to the browser.  
-    """  
-    if not text:  
-        st.warning("Empty text: nothing to synthesize.")  
-        return  
-  
-    speech_config = get_speech_config()  
-    speaker_profile_id = os.getenv("SPEAKER_PROFILE_ID") or ""  
-  
-    locale = LANGUAGES[target_lang][0]  
-  
-    ssml = f"""  
-    <speak version='1.0' xml:lang='en-US'  
-           xmlns='http://www.w3.org/2001/10/synthesis'  
-           xmlns:mstts='http://www.w3.org/2001/mstts'>  
-        <voice name='DragonLatestNeural'>  
-            <mstts:ttsembedding speakerProfileId='{speaker_profile_id}'/>  
-            <mstts:express-as style='Prompt'>  
-                <lang xml:lang='{locale}'> {text} </lang>  
-            </mstts:express-as>  
-        </voice>  
-    </speak>  
-    """  
-  
-    # Configuration to obtain audio in memory in addition to playback through the speaker.
-    audio_config = speech_sdk.audio.AudioOutputConfig(use_default_speaker=True)  
-    synthesizer = speech_sdk.SpeechSynthesizer(  
-        speech_config=speech_config,  
-        audio_config=audio_config  
-    )  
-  
-    result = synthesizer.speak_ssml_async(ssml).get()  
-  
-    if result.reason != speech_sdk.ResultReason.SynthesizingAudioCompleted:  
-        raise RuntimeError("Error during synthesis: " + str(result.reason))  
-  
-    # Mostramos un reproductor en Streamlit  
-    audio_bytes = result.audio_data  
+# ═══════════════════════════════════════════════════════════════════════════════
+@st.cache_resource(show_spinner=False)
+def get_synthesizer() -> speech_sdk.SpeechSynthesizer:
+    """Create and cache a reusable synthesizer instance"""
+    speech_config = get_speech_config()
+    audio_config = get_audio_output_config()
+    return speech_sdk.SpeechSynthesizer(
+        speech_config=speech_config,
+        audio_config=audio_config
+    )
+
+def build_ssml(text: str, target_lang: str, voice_choice: str) -> str:
+    """Build SSML string based on voice choice"""
+    if voice_choice == "personal":
+        speaker_profile_id = os.getenv("SPEAKER_PROFILE_ID") or ""
+        locale = LANGUAGES[target_lang][0]  # Locale for the target language
+        return f"""
+        <speak version='1.0' xml:lang='en-US'
+            xmlns='http://www.w3.org/2001/10/synthesis'
+            xmlns:mstts='http://www.w3.org/2001/mstts'>
+            <voice name='DragonLatestNeural'>
+                <mstts:ttsembedding speakerProfileId='{speaker_profile_id}'/>
+                <mstts:express-as style='Prompt'>
+                    <lang xml:lang='{locale}'> {text} </lang>
+                </mstts:express-as>
+            </voice>
+        </speak>
+        """
+    else:  # Speech synthesis with a standard voice
+        return f"""
+        <speak version='1.0' xml:lang='{target_lang}'
+            xmlns='http://www.w3.org/2001/10/synthesis'>
+            <voice name='{voice_choice}'>
+                {text}
+            </voice>
+        </speak>
+        """
+
+def synthesize(text: str, target_lang: str, voice_choice: str) -> None:
+    """
+    Synthesizes text using the cached synthesizer.
+    Plays through the default speaker and displays in Streamlit.
+    """
+    if not text:
+        st.warning("Empty text: nothing to synthesize.")
+        return
+    
+    # Get cached synthesizer (reused across calls)
+    synthesizer = get_synthesizer()
+    
+    # Build SSML
+    ssml = build_ssml(text, target_lang, voice_choice)
+    
+    # Synthesize audio
+    result = synthesizer.speak_ssml_async(ssml).get()
+    
+    if result.reason != speech_sdk.ResultReason.SynthesizingAudioCompleted:
+        raise RuntimeError("Error during synthesis: " + str(result.reason))
+    
+    # Display audio player in Streamlit
+    audio_bytes = result.audio_data
     st.audio(audio_bytes, format="audio/wav")  
   
   
@@ -188,24 +230,38 @@ st.write(
 with st.sidebar:
     st.markdown("### Settings")
     
-    detect_language = st.checkbox('Detect language', True, help=f"Automatically detect the language between {', '.join(AUTO_DETECT_LOCALES)} or set it to {source_language}.")
+    detect_language = st.checkbox('Detect language', True, help=f"Automatically detect the language between {', '.join([get_language_name(code) for code in AUTO_DETECT_LOCALES])} or select one from the list.")
     if not detect_language:
         source_language = st.selectbox("Source language:", 
                                        [f"{code}" for code in AUTO_DETECT_LOCALES],
                                        index=0)  # Default to the first language (English)
 
-    synthetize_translation = st.checkbox("Synthesize translation", True, help="Whether to synthesize the translation into the target language or not.")
+    st.markdown("---")
+    st.markdown("### Synthesis Settings")
+    synthetize_translation = st.checkbox("Enable TTS synthesis", True, help="Synthesize translations with text-to-speech")
+    
     if synthetize_translation:
         # Target language selection for translation and speech synthesis
         codes_names = [f"{code} - {name}" for code, (_, name) in LANGUAGES.items()]  
-        selection = st.selectbox("Target language for systhesis", codes_names, index=codes_names.index("en - English"))  
+        selection = st.selectbox("Target language for synthesis", codes_names, index=codes_names.index("en - English"))  
         target_code = selection.split(" - ")[0]
+        
+        # Voice selection
+        voice_display_name = st.selectbox(
+            "Select voice",
+            list(VOICE_OPTIONS.keys()),
+            index=0,  # Default to Ximena
+            help="Choose between Spanish female, male, or personal voice"
+        )
+        selected_voice = VOICE_OPTIONS[voice_display_name]
     else:
         target_code = "en"
+        selected_voice = VOICE_OPTIONS["Ximena (Spanish Female)"]
 
 # Main button  
 if st.button("🎙️ Start recording"):  
-    recognizer = get_recognizer()  
+    # Build recognizer with current settings (uses cached audio config)
+    recognizer = build_recognizer(detect_language, source_language)
   
     with st.spinner("Listening..."):  
         try:  
@@ -240,7 +296,7 @@ if st.button("🎙️ Start recording"):
         # Synthesis  
         with st.spinner("Synthesizing…"):  
             try:  
-                synthesize(translated, target_code)  
+                synthesize(translated, target_code, selected_voice)  
             except Exception as ex:  
                 st.error(f"❌ Synthesis error: {ex}")  
   
