@@ -234,14 +234,19 @@ def build_ssml(text: str, target_lang: str, voice_choice: str) -> str:
 
 def synthesize_and_play(text: str, target_lang: str, voice_choice: str, synthesizer: speechsdk.SpeechSynthesizer) -> bytes:
     """
-    Synthesizes text and plays it WITHOUT pausing recognition.
-    Uses global flags to mark TTS as playing, preventing transcription processing during playback.
-    The synthesizer automatically plays the audio through the speaker using AudioConfig.
-    Returns audio bytes for playback in UI.
+    Synthesizes text and plays it SYNCHRONOUSLY with precise microphone control.
     
-    Uses SYNCHRONOUS synthesis: .get() blocks until synthesis AND playback complete.
-    The SDK's speak_ssml_async().get() waits for the entire synthesis and playback to finish
-    when using use_default_speaker=True, so NO time estimation is needed.
+    CRITICAL DESIGN:
+    - Uses speak_ssml_async().get() which is FULLY SYNCHRONOUS and BLOCKING
+    - When AudioConfig uses use_default_speaker=True, .get() waits until:
+      1. Audio synthesis completes
+      2. Audio playback through speaker FULLY completes
+    - Microphone is muted BEFORE synthesis starts
+    - Microphone is unmuted AFTER playback fully completes
+    - NO time estimation needed - SDK handles exact timing
+    - tts_is_playing flag protects against any edge cases
+    
+    Returns: Audio bytes for UI display (optional)
     """
     global tts_is_playing, tts_end_time
     
@@ -250,44 +255,58 @@ def synthesize_and_play(text: str, target_lang: str, voice_choice: str, synthesi
     
     audio_bytes = None
     mic_was_muted = False
+    tts_start_time = time.time()
     
     try:
-        # Mark TTS as playing BEFORE starting
+        # STEP 1: Set flag BEFORE any synthesis activity
         tts_is_playing = True
-        tts_start_time = time.time()
-        print(f"[DEBUG] *** TTS SYNTHESIS STARTED *** tts_is_playing = True at {tts_start_time:.2f}")
+        print(f"[DEBUG] *** TTS START *** Flag set at {tts_start_time:.3f}")
         
-        # Mute microphone before playing
+        # STEP 2: Mute microphone IMMEDIATELY before synthesis
         mic_was_muted = mute_microphone()
+        if not mic_was_muted and PYCAW_AVAILABLE:
+            print(f"[DEBUG] ⚠️ WARNING: Failed to mute microphone!")
         
-        # Build SSML and synthesize
-        # speak_ssml_async().get() is BLOCKING: waits for synthesis AND playback to complete
+        # STEP 3: Build SSML
         ssml = build_ssml(text, target_lang, voice_choice)
+        
+        # STEP 4: SYNCHRONOUS synthesis + playback
+        # This call BLOCKS until audio is FULLY PLAYED through the speaker
+        print(f"[DEBUG] Calling speak_ssml_async().get() - will block until playback completes")
         result = synthesizer.speak_ssml_async(ssml).get()
+        print(f"[DEBUG] speak_ssml_async().get() returned - playback is complete")
         
         if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
             audio_bytes = result.audio_data
-            print(f"[DEBUG] Synthesis and playback completed, audio size: {len(audio_bytes)} bytes")
+            print(f"[DEBUG] ✅ Synthesis successful, audio size: {len(audio_bytes)} bytes")
+        elif result.reason == speechsdk.ResultReason.Canceled:
+            cancellation = result.cancellation_details
+            print(f"[DEBUG] ❌ Synthesis canceled: {cancellation.reason}")
+            if cancellation.reason == speechsdk.CancellationReason.Error:
+                print(f"[DEBUG] Error details: {cancellation.error_details}")
         else:
-            print(f"[DEBUG] Synthesis failed: {result.reason}")
+            print(f"[DEBUG] ❌ Synthesis failed: {result.reason}")
         
         return audio_bytes
     
     except Exception as e:
-        print(f"[DEBUG] Error in synthesize_and_play: {e}")
+        print(f"[DEBUG] ❌ Exception in synthesize_and_play: {e}")
+        import traceback
+        traceback.print_exc()
         return None
     
     finally:
-        # Always unmute microphone
+        # STEP 5: Unmute microphone AFTER playback completes
+        # Small delay to ensure audio driver releases resources
         if mic_was_muted:
-            time.sleep(0.1)  # Small pause before unmuting
+            time.sleep(0.05)  # Minimal delay for driver stability
             unmute_microphone()
         
-        # Mark that TTS finished AFTER completion
+        # STEP 6: Clear flag and record end time
         tts_is_playing = False
         tts_end_time = time.time()
         duration = tts_end_time - tts_start_time
-        print(f"[DEBUG] *** TTS PLAYBACK FINISHED *** tts_is_playing = False at {tts_end_time:.2f} (duration: {duration:.2f}s)")
+        print(f"[DEBUG] *** TTS END *** Flag cleared at {tts_end_time:.3f} (total duration: {duration:.3f}s)")
 
 # ------------------- recognizer builder -----------------------  
 def build_recognizer(detect_lang: bool, source_lang: str = None, target_langs: list = None, auto_detect_locales: list = None) -> speechsdk.translation.TranslationRecognizer:  
@@ -380,6 +399,9 @@ def recognition_worker(stop_event: threading.Event,
         """
         Determines if the transcribed text should be discarded as TTS echo.
         Returns True if it should be discarded, False if valid.
+        
+        With synchronous synthesis and microphone muting, we should have minimal echo,
+        but we still keep a small safety window for any system delays.
         """
         global tts_is_playing, tts_end_time
         
@@ -387,18 +409,22 @@ def recognition_worker(stop_event: threading.Event,
             return True
         
         current_time = time.time()
-        time_since_tts = current_time - tts_end_time if tts_end_time > 0 else 999
         
         # Log for debugging
-        print(f"[DEBUG] Transcribed: '{text}' | tts_is_playing={tts_is_playing} | time_since_tts={time_since_tts:.2f}s")
+        print(f"[DEBUG] Transcribed: '{text}' | tts_is_playing={tts_is_playing}")
         
-        # If TTS is playing OR just finished, DISCARD
-        # With pycaw, use minimal window (0.2s) since microphone is muted during playback
+        # If TTS is actively playing (flag is set), ALWAYS DISCARD
+        if tts_is_playing:
+            print(f"[DEBUG] ⚠️ DISCARDED (TTS is actively playing) - '{text}'")
+            return True
+        
+        # Add a minimal safety window after TTS ends (reduced from 0.2s to 0.1s)
+        # This is only for edge cases where the audio driver takes time to release the mic
         time_since_tts_end = current_time - tts_end_time
-        discard_window = 0.2 if PYCAW_AVAILABLE else 1.0
+        discard_window = 0.1 if PYCAW_AVAILABLE else 0.5
         
-        if tts_is_playing or (tts_end_time > 0 and time_since_tts_end < discard_window):
-            print(f"[DEBUG] ⚠️ DISCARDED (TTS active or recent: {time_since_tts_end:.2f}s ago) - '{text}'")
+        if tts_end_time > 0 and time_since_tts_end < discard_window:
+            print(f"[DEBUG] ⚠️ DISCARDED (TTS ended recently: {time_since_tts_end:.3f}s ago) - '{text}'")
             return True
         
         return False
@@ -468,20 +494,24 @@ def recognition_worker(stop_event: threading.Event,
         detected_langs_list.insert(0, detected_lang)
 
         # 5) Synthesize translation if enabled
+        # CRITICAL: Execute synthesis SYNCHRONOUSLY in the main recognition thread
+        # This ensures the microphone remains muted during the entire playback
         if synthesis_enabled and synthesizer and translated_text:
             # Synthesize in the appropriate language
             synthesis_lang = "es" if not is_spanish else target_lang
             
-            def synthesize_in_thread():
-                try:
-                    audio_bytes = synthesize_and_play(translated_text, synthesis_lang, voice_choice, synthesizer)
-                    if audio_bytes:
-                        audio_list.insert(0, audio_bytes)
-                        ui_ping.set()  # Notify UI after audio is ready
-                except Exception as e:
-                    print(f"[DEBUG] Synthesis error: {e}")
-            
-            threading.Thread(target=synthesize_in_thread, daemon=True).start()
+            try:
+                print(f"[DEBUG] Starting SYNCHRONOUS synthesis for: '{translated_text}'")
+                # Execute synthesis SYNCHRONOUSLY - blocks until playback completes
+                audio_bytes = synthesize_and_play(translated_text, synthesis_lang, voice_choice, synthesizer)
+                if audio_bytes:
+                    audio_list.insert(0, audio_bytes)
+                    print(f"[DEBUG] Audio bytes added to list (size: {len(audio_bytes)})")
+                print(f"[DEBUG] SYNCHRONOUS synthesis completed")
+            except Exception as e:
+                print(f"[DEBUG] Synthesis error: {e}")
+                import traceback
+                traceback.print_exc()
   
         ui_ping.set()  # ask UI to refresh  
   
