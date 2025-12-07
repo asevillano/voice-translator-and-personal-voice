@@ -52,10 +52,23 @@ LANGUAGES = {
 # Source language for translation. Set None to use automatic detection.
 ORIGIN_LANGUAGE = None #'en-US'
 
-# List of languages to be passed to the service for automatic identification  
-AUTO_DETECT_LOCALES = ['en-US', 'es-ES', 'fr-FR', 'it-IT']
+# List of languages to be passed to the service for automatic identification
+AUTO_DETECT_LOCALES: dict[str, str] = {
+    "bg-BG": "Bulgarian", "hr-HR": "Croatian",  
+    "cs-CZ": "Czech", "da-D":  "Danish",  
+    "nl-NL": "Dutch", "en-US": "English",  
+    "et-EE": "Estonian", "fi-FI": "Finnish",  
+    "fr-FR": "French", "de-DE": "German",  
+    "el-GR": "Greek", "hu-HU": "Hungarian",  
+    "ga-IE": "Irish", "it-IT": "Italian",  
+    "lv-LV": "Latvian", "lt-LT": "Lithuanian",  
+    "mt-MT": "Maltese", "pl-PL": "Polish",  
+    "pt-PT": "Portuguese", "ro-RO": "Romanian",  
+    "sk-S":  "Slovak", "sl-SI": "Slovenian",  
+    "es-ES": "Spanish", "sv-SE": "Swedish",  
+}
 if ORIGIN_LANGUAGE is None:
-    print("Languages for automatic detection:", AUTO_DETECT_LOCALES)
+    print("Languages for automatic detection:", list(AUTO_DETECT_LOCALES.keys()))
   
 # ------------------------------------------------------------------------------  
 # Configuration initialization  
@@ -85,7 +98,7 @@ def build_translation_config() -> speech_sdk.translation.SpeechTranslationConfig
   
     # Configuration for automatic or fixed source language detection
     if ORIGIN_LANGUAGE is None:
-        auto_config = speech_sdk.languageconfig.AutoDetectSourceLanguageConfig(languages=AUTO_DETECT_LOCALES)
+        auto_config = speech_sdk.languageconfig.AutoDetectSourceLanguageConfig(languages=list(AUTO_DETECT_LOCALES.keys()))
         # Translation recognizer with auto-detect  
         recognizer = speech_sdk.translation.TranslationRecognizer(  
             translation_config=translation_config,  

@@ -26,6 +26,9 @@ AUTO_DETECT_LOCALES: list[str] = ["en-US", "es-ES", "fr-FR", "it-IT"]
 source_language = "es-ES"
 synthetize_translation = True  # Whether to synthesize the translation or not
 
+# Set LANGUAGES TO EUROPEAN COMMISSION LANGUAGES
+LANGUAGES = LANGUAGES_EU_COMMISION
+
 # Voice options for TTS
 VOICE_OPTIONS = {
     "Ximena (Spanish Female)": "es-ES-Ximena:DragonHDLatestNeural",
