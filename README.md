@@ -19,9 +19,11 @@ Annotate the speaker_profile_id provided when the Personal Voice service is crea
 
 Set the required target languages in the constant LANGUAGES.
 
-- Option 1: recognize and translate one sentence (black and white text interface): run `python voice_translator_and_personal_voice.py`
+- Option 1: Translate one sentence (black and white text interface): run `python voice_translator_and_personal_voice.py`
 
-- Option 2: recognize and translate one sentence (web interface): run `streamlit run voice_translator_and_personal_voice_app.py`
+- Option 2: Translate one sentence (web interface): run `streamlit run voice_translator_and_personal_voice_app.py`
 <img src="./Demo.gif" alt="Video Demo"/>
 
-- Option 3: continuous recognition and translaton (web interface): run `streamlit run voice_translator_and_personal_voice_continuous_app.py`
+- Option 3: Continuous Translation (web interface): run `streamlit run voice_translator_and_personal_voice_continuous_app.py`
+
+- Option 4: Simultaneous Translator between Spanish (as the main language) and a list of controlled languages or just one: run run `streamlit run simultaneous_translator_app.py`
