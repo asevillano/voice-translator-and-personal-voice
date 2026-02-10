@@ -53,6 +53,7 @@ LANGUAGES = {
 ORIGIN_LANGUAGE = None #'en-US'
 
 # List of languages to be passed to the service for automatic identification
+'''
 AUTO_DETECT_LOCALES: dict[str, str] = {
     "bg-BG": "Bulgarian", "hr-HR": "Croatian",  
     "cs-CZ": "Czech", "da-D":  "Danish",  
@@ -67,6 +68,11 @@ AUTO_DETECT_LOCALES: dict[str, str] = {
     "sk-S":  "Slovak", "sl-SI": "Slovenian",  
     "es-ES": "Spanish", "sv-SE": "Swedish",  
 }
+'''
+AUTO_DETECT_LOCALES: dict[str, str] = {
+    "en-US": "English", "fr-FR": "French", "de-DE": "German", "es-ES": "Spanish",  
+}
+
 if ORIGIN_LANGUAGE is None:
     print("Languages for automatic detection:", list(AUTO_DETECT_LOCALES.keys()))
   
@@ -204,39 +210,39 @@ def synthesize_personal_voice(speech_config, text: str, target_language: str):
 # Main program  
 # ------------------------------------------------------------------------------  
 def main():  
-    try:  
-        recognizer = build_translation_config()  
-        speech_config = speech_sdk.SpeechConfig(  
-            subscription=os.getenv("SPEECH_KEY"),  
-            region=os.getenv("SPEECH_REGION")  
-        )   
+    #try:  
+    recognizer = build_translation_config()  
+    speech_config = speech_sdk.SpeechConfig(  
+        subscription=os.getenv("SPEECH_KEY"),  
+        region=os.getenv("SPEECH_REGION")  
+    )   
 
-        while True:
-            print("\nAvailable languages for translation:")
+    while True:
+        print("\nAvailable languages for translation:")
 
-            # Extract pairs (short code, language name)
-            pares = []
-            for code, values in LANGUAGES.items():
-                name = next((v for v in values if "-" not in v), "")
-                pares.append((code, name))
-            # Display in rows of 3 columns
-            for i in range(0, len(pares), 3):
-                fila = pares[i:i+3]
-                columnas = [f"{code} → {name:<10}" for code, name in fila]
-                print("  |  ".join(columnas))
+        # Extract pairs (short code, language name)
+        pares = []
+        for code, values in LANGUAGES.items():
+            name = next((v for v in values if "-" not in v), "")
+            pares.append((code, name))
+        # Display in rows of 3 columns
+        for i in range(0, len(pares), 3):
+            fila = pares[i:i+3]
+            columnas = [f"{code} → {name:<10}" for code, name in fila]
+            print("  |  ".join(columnas))
 
-            target = input("Enter language to synthesize the translation (or 'quit' to exit): ").lower()  
-            if target == "quit":  
-                break  
-            if target not in LANGUAGES:  
-                print("Unsupported language.")  
-                continue  
+        target = input("Enter language to synthesize the translation (or 'quit' to exit): ").lower()  
+        if target == "quit":  
+            break  
+        if target not in LANGUAGES:  
+            print("Unsupported language.")  
+            continue  
 
-            translated = translate_voice(recognizer, target)  
-            synthesize_personal_voice(speech_config, translated, target)  
-  
-    except Exception as ex:  
-        print(f"Se produjo una excepción: {ex}")  
+        translated = translate_voice(recognizer, target)  
+        synthesize_personal_voice(speech_config, translated, target)  
+
+    #except Exception as ex:  
+    #    print(f"Se produjo una excepción: {ex}")  
   
   
 if __name__ == "__main__":  

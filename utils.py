@@ -14,7 +14,7 @@ LANGUAGES: dict[str, tuple[str, str]] = {
     "nl": ("nl-NL", "Dutch"),       
     "sv": ("sv-SE", "Swedish"),  
     "da": ("da-DK", "Danish"),  
-    "el": ("el-GR", "Greek"),       
+    "ja": ("ja-JP", "Japanese"),       
     "pt": ("pt-PT", "Portuguese"),  
 }
 
