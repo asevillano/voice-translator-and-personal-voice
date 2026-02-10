@@ -618,45 +618,33 @@ is_recording = (
 with st.sidebar:
     st.markdown("### Language Detection Settings")
     
-    # Individual language codes (excluding Spanish)
-    non_spanish_langs = {code: (locale, name) for code, (locale, name) in LANGUAGES.items() if code != "es"}
+    # Language selector from LANGUAGES dictionary
+    language_options = ["None (All languages)"] + [f"{code} - {name}" for code, (locale, name) in LANGUAGES.items()]
+    selected_language_option = st.selectbox(
+        "Select the languages to identify:",
+        language_options,
+        index=0,
+        disabled=is_recording,
+        help="Select 'None' to detect all languages from the list, or choose a specific language to restrict detection to that language and Spanish"
+    )
     
-    # Track previous state of "All languages" to detect transitions
-    if "prev_all_langs" not in st.session_state:
-        st.session_state.prev_all_langs = True
-    
-    # Master checkbox: All languages
-    all_langs = st.checkbox("🌍 All languages", value=True, disabled=is_recording)
-    
-    # If "All languages" was just unchecked, reset all individual checkboxes to False
-    if st.session_state.prev_all_langs and not all_langs:
-        for code in non_spanish_langs:
-            st.session_state[f"lang_{code}"] = False
-    st.session_state.prev_all_langs = all_langs
-    
-    # Individual language checkboxes
-    selected_codes = []
-    for code, (locale, name) in non_spanish_langs.items():
-        checked = st.checkbox(f"{name} ({code})", disabled=is_recording or all_langs, key=f"lang_{code}")
-        if checked and not all_langs:
-            selected_codes.append(code)
-    
-    # Build auto_detect_locales
-    if all_langs:
+    # Parse selected language
+    if selected_language_option == "None (All languages)":
         selected_language = None
+        # Use all languages from LANGUAGES dict for auto-detection
+        # LANGUAGES values are tuples: (locale, name)
         auto_detect_locales = [locale_tuple[0] for locale_tuple in LANGUAGES.values()]
-    elif selected_codes:
-        auto_detect_locales = [LANGUAGES[code][0] for code in selected_codes]
-        # Always include Spanish
-        if PRIMARY_LANGUAGE not in auto_detect_locales:
-            auto_detect_locales.append(PRIMARY_LANGUAGE)
-        selected_language = selected_codes[0]
     else:
-        # Nothing selected → only Spanish
-        auto_detect_locales = [PRIMARY_LANGUAGE]
-        selected_language = None
+        # Extract language code from selection (e.g., "en - English" -> "en")
+        selected_language = selected_language_option.split(" - ")[0]
+        selected_locale = LANGUAGES[selected_language][0]
+        # Restrict to selected language + primary language (Spanish)
+        if selected_locale == PRIMARY_LANGUAGE:
+            auto_detect_locales = [PRIMARY_LANGUAGE]
+        else:
+            auto_detect_locales = [selected_locale, PRIMARY_LANGUAGE]
     
-    st.caption(f"🔍 Detection locales ({len(auto_detect_locales)}): {', '.join(auto_detect_locales)}")
+    st.caption(f"🔍 Detection locales: {', '.join(auto_detect_locales)}")
     
     st.markdown("---")
     st.markdown("### Synthesis Settings")
