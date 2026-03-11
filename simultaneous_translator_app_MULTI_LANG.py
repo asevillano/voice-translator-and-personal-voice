@@ -43,11 +43,12 @@ speech_region = os.getenv("SPEECH_REGION")
 if not speech_region:  
     st.error("Missing SPEECH_REGION environment variable.")  
     st.stop()  
-speech_endpoint = os.getenv("SPEECH_ENDPOINT")
-# Regional endpoint for API key auth; custom subdomain for Entra ID
-speech_endpoint_regional = f"https://{speech_region}.api.cognitive.microsoft.com"
+speech_endpoint = f"https://{speech_region}.api.cognitive.microsoft.com"  
+# Custom subdomain endpoint (required for Entra ID auth)
+speech_endpoint_custom = os.getenv("SPEECH_ENDPOINT")  # e.g. https://myresource.cognitiveservices.azure.com
 
 # Azure AD token-based authentication (used when SPEECH_KEY is not set)
+# Cognitive Services Speech User Impersonation role must be assigned to the user/service principal for this to work
 _credential = None
 def get_speech_token() -> str:
     """Get an Azure AD token for Cognitive Services (cached/refreshed by azure-identity)."""
@@ -58,7 +59,7 @@ def get_speech_token() -> str:
     return _credential.get_token("https://cognitiveservices.azure.com/.default").token
 
 use_token_auth = not speech_key
-if use_token_auth and not speech_endpoint:
+if use_token_auth and not speech_endpoint_custom:
     st.error("Entra ID auth requires SPEECH_ENDPOINT with custom subdomain (e.g. https://myresource.cognitiveservices.azure.com). Set it in .env")
     st.stop()
 
@@ -145,7 +146,7 @@ def unmute_microphone():
 def get_speech_config() -> speechsdk.SpeechConfig:
     """SpeechConfig for synthesis (cached between reloads)"""
     if use_token_auth:
-        cfg = speechsdk.SpeechConfig(endpoint=speech_endpoint)
+        cfg = speechsdk.SpeechConfig(endpoint=speech_endpoint_custom)
         cfg.authorization_token = get_speech_token()
         return cfg
     return speechsdk.SpeechConfig(subscription=speech_key, region=speech_region)
@@ -359,13 +360,13 @@ def build_recognizer(detect_lang: bool, source_lang: str = None, target_langs: l
         token = get_speech_token()
         print(f"[AUTH] Token acquired (length={len(token)})")
         translation_cfg = speechsdk.translation.SpeechTranslationConfig(
-            endpoint=speech_endpoint,
+            endpoint=speech_endpoint_custom,
         )
         translation_cfg.authorization_token = token
     else:
         translation_cfg = speechsdk.translation.SpeechTranslationConfig(  
             subscription=speech_key,  
-            endpoint=speech_endpoint_regional,  
+            endpoint=speech_endpoint,  
         )
     
     # Add target languages
@@ -421,7 +422,7 @@ def recognition_worker(stop_event: threading.Event,
                        source_lang: str,
                        detected_langs_list: list,
                        auto_detect_locales: list = None,
-                       selected_target_lang: str = None):  
+                       selected_languages: list = None):  
     
     # Initialize COM for this thread (required for pycaw)
     if PYCAW_AVAILABLE:
@@ -434,9 +435,21 @@ def recognition_worker(stop_event: threading.Event,
     # Ensure microphone is unmuted at start
     unmute_microphone()
     
+    # Set initial default for last_non_spanish_lang based on selection
+    global last_non_spanish_lang
+    if selected_languages and len(selected_languages) > 0:
+        # Use the first selected language as the initial default
+        last_non_spanish_lang = selected_languages[0]
+    else:
+        # No specific selection → use first non-Spanish language from LANGUAGES dict
+        first_non_spanish = next((code for code in LANGUAGES if code != "es"), "en")
+        last_non_spanish_lang = first_non_spanish
+    print(f"[DEBUG] Initial last_non_spanish_lang set to: {last_non_spanish_lang}")
+    
     # Debug: show auto_detect_locales
     print(f"[DEBUG] auto_detect_locales received: {auto_detect_locales}")
     print(f"[DEBUG] detect_lang: {detect_lang}, source_lang: {source_lang}")
+    print(f"[DEBUG] selected_languages: {selected_languages}")
     
     # Build primary recognizer that translates to multiple target languages at once
     # This recognizer will handle all non-Spanish languages -> Spanish/English/etc
@@ -521,19 +534,16 @@ def recognition_worker(stop_event: threading.Event,
         is_spanish = detected_lang.startswith("es")
         
         if not is_spanish:
-            # Update the last non-Spanish language detected
-            detected_lang_code = detected_lang.split("-")[0]  # Extract language code (e.g., "en" from "en-US")
+            # Non-Spanish detected → translate to Spanish, and remember this language
+            detected_lang_code = detected_lang.split("-")[0]  # e.g. "en" from "en-US"
             last_non_spanish_lang = detected_lang_code
             status_dict["last_non_spanish"] = last_non_spanish_lang
-            target_lang = "es"  # Translate to Spanish
+            target_lang = "es"
+            print(f"[DEBUG] Non-Spanish detected ({detected_lang_code}) → translating to Spanish")
         else:
-            # Spanish detected, translate to selected language or last non-Spanish language
-            if selected_target_lang:
-                target_lang = selected_target_lang  # Use the language selected in UI
-                print(f"[DEBUG] Using selected target language: {target_lang}")
-            else:
-                target_lang = last_non_spanish_lang  # Use last detected non-Spanish language
-                print(f"[DEBUG] Using last non-Spanish language: {target_lang}")
+            # Spanish detected → translate to the last non-Spanish language spoken
+            target_lang = last_non_spanish_lang
+            print(f"[DEBUG] Spanish detected → translating to last non-Spanish language: {target_lang}")
         
         # 3) Get the translation for the target language from the SDK results
         # Since we configured multiple target languages, we can get any translation directly
@@ -670,35 +680,47 @@ is_recording = (
 with st.sidebar:
     st.markdown("### Language Detection Settings")
     
-    # Language selector from LANGUAGES dictionary
-    language_options = ["None (All languages)"] + [f"{code} - {name}" for code, (locale, name) in LANGUAGES.items()]
-    selected_language_option = st.selectbox(
-        "Select the languages to identify:",
-        language_options,
-        index=0,
-        disabled=is_recording,
-        help="Select 'None' to detect all languages from the list, or choose a specific language to restrict detection to that language and Spanish"
-    )
+    # Individual language codes (excluding Spanish)
+    non_spanish_langs = {code: (locale, name) for code, (locale, name) in LANGUAGES.items() if code != "es"}
     
-    # Parse selected language
-    if selected_language_option == "None (All languages)":
+    # Track previous state of "All languages" to detect transitions
+    if "prev_all_langs" not in st.session_state:
+        st.session_state.prev_all_langs = True
+    
+    # Master checkbox: All languages
+    all_langs = st.checkbox("🌍 All languages", value=True, disabled=is_recording)
+    
+    # If "All languages" was just unchecked, reset all individual checkboxes to False
+    if st.session_state.prev_all_langs and not all_langs:
+        for code in non_spanish_langs:
+            st.session_state[f"lang_{code}"] = False
+    st.session_state.prev_all_langs = all_langs
+    
+    # Individual language checkboxes
+    selected_codes = []
+    for code, (locale, name) in non_spanish_langs.items():
+        checked = st.checkbox(f"{name} ({code})", disabled=is_recording or all_langs, key=f"lang_{code}")
+        if checked and not all_langs:
+            selected_codes.append(code)
+    
+    # Build auto_detect_locales
+    if all_langs:
         selected_language = None
-        # Use all languages from LANGUAGES dict for auto-detection
-        # LANGUAGES values are tuples: (locale, name)
         auto_detect_locales = [locale_tuple[0] for locale_tuple in LANGUAGES.values()]
+    elif selected_codes:
+        auto_detect_locales = [LANGUAGES[code][0] for code in selected_codes]
+        # Always include Spanish
+        if PRIMARY_LANGUAGE not in auto_detect_locales:
+            auto_detect_locales.append(PRIMARY_LANGUAGE)
+        selected_language = selected_codes[0]
     else:
-        # Extract language code from selection (e.g., "en - English" -> "en")
-        selected_language = selected_language_option.split(" - ")[0]
-        selected_locale = LANGUAGES[selected_language][0]
-        # Restrict to selected language + primary language (Spanish)
-        if selected_locale == PRIMARY_LANGUAGE:
-            auto_detect_locales = [PRIMARY_LANGUAGE]
-        else:
-            auto_detect_locales = [selected_locale, PRIMARY_LANGUAGE]
+        # Nothing selected → only Spanish
+        auto_detect_locales = [PRIMARY_LANGUAGE]
+        selected_language = None
     
-    st.caption(f"🔍 Detection locales: {', '.join(auto_detect_locales)}")
+    st.caption(f"🔍 Detection locales ({len(auto_detect_locales)}): {', '.join(auto_detect_locales)}")
     
-    st.markdown("---")
+    #st.markdown("---")
     st.markdown("### Synthesis Settings")
     synthesis_enabled = st.checkbox("Enable TTS synthesis", True, disabled=is_recording, help="Synthesize translations with text-to-speech (only in non-Spanish language)")
     
@@ -749,7 +771,7 @@ if st.button(button_label, type="primary"):
                 None,  # not used anymore
                 st.session_state.detected_langs,
                 auto_detect_locales,  # pass the dynamic list
-                selected_language,  # pass the selected target language for Spanish translation
+                selected_codes if not all_langs else [],  # pass selected languages for fallback
             ),  
         )  
         st.session_state.thread.start()  

@@ -1,0 +1,11 @@
+streamlit
+streamlit-autorefresh
+streamlit-webrtc
+python-dotenv
+azure-cognitiveservices-speech
+azure-identity
+pycaw
+comtypes
+av
+numpy
+scipy
