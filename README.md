@@ -66,6 +66,10 @@ Annotate the `SPEAKER_PROFILE_ID` provided when the Personal Voice is created, a
 
 Set the required target languages in the constant `LANGUAGES`.
 
+### SDK-based demos
+
+These demos use the **Azure Speech SDK** (`azure-cognitiveservices-speech`):
+
 | Demo | Command |
 |---|---|
 | **Translate one sentence** (text interface) | `python voice_translator_and_personal_voice.py` |
@@ -73,5 +77,42 @@ Set the required target languages in the constant `LANGUAGES`.
 | **Continuous translation** (web interface) | `streamlit run voice_translator_and_personal_voice_continuous_app.py` |
 | **Simultaneous translator** (Spanish ↔ selected languages) | `streamlit run simultaneous_translator_app.py` |
 | **Simultaneous translator multi-language** (Spanish ↔ all languages) | `streamlit run "simultaneous_translator_app (MULTI-IDIOMA).py"` |
+
+### WebSocket-based demo (No SDK)
+
+This demo uses **raw WebSocket + REST API** — no Azure Speech SDK dependency. It connects directly to the Azure Speech Translation WebSocket protocol, giving full control over the wire format and enabling environments where the SDK cannot be installed.
+
+| Demo | Command |
+|---|---|
+| **Simultaneous translator via WebSocket** | `streamlit run simultaneous_translator_ws_app.py` |
+
+#### `simultaneous_translator_ws_app.py` — Details
+
+**Architecture:**
+
+| Component | Technology |
+|---|---|
+| Microphone capture | `sounddevice` (PortAudio) — 16 kHz / 16-bit / mono PCM |
+| Speech Translation | WebSocket to `wss://{region}.stt.speech.microsoft.com/stt/speech/universal/v2` |
+| Text-to-Speech | REST API to `https://{region}.tts.speech.microsoft.com/cognitiveservices/v1` with streaming playback |
+| UI | Streamlit |
+
+**Features:**
+
+- 🔄 **Real-time simultaneous translation** — speech is transcribed and translated as you speak
+- 🌍 **Automatic language detection** — supports a closed list of up to 10 source languages with continuous detection (`DetectContinuous`)
+- 🔒 **Dual authentication** — API Key or Entra ID (with compound token `aad#RESOURCE_ID#TOKEN` for WebSocket and `issueToken` exchange for TTS)
+- 🗣️ **Streaming TTS playback** — translated text is synthesized and played back in real time via `sounddevice`
+- 🎙️ **Automatic microphone mute/unmute** — mutes the mic during TTS playback to prevent echo feedback (Windows, via `pycaw`)
+- 🎭 **Personal Voice support** — can use a cloned voice for TTS output
+- 📝 **Live transcription display** — shows interim hypotheses and final translations in the Streamlit UI
+
+**Additional environment variable** (only for WebSocket Entra ID auth):
+
+| Variable | Description |
+|---|---|
+| `SPEECH_RESOURCE_ID` | Full Azure Resource Manager ID. Required to build the compound auth token for WebSocket. Get it with: `az cognitiveservices account show --name <name> --resource-group <rg> --query id -o tsv` |
+
+> 📖 For a deep-dive into the WebSocket wire protocol, see [`HOW_TO_USE_SPEECH_TRANSLATION_WEBSOCKETS.md`](HOW_TO_USE_SPEECH_TRANSLATION_WEBSOCKETS.md)
 
 <img src="./Demo.gif" alt="Video Demo"/>

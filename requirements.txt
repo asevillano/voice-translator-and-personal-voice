@@ -9,3 +9,7 @@ comtypes
 av
 numpy
 scipy
+# --- WebSocket version (simultaneous_translator_ws_app.py) ---
+websocket-client
+sounddevice
+requests
