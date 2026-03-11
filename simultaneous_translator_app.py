@@ -62,17 +62,12 @@ if use_token_auth and not speech_endpoint:
     st.error("Entra ID auth requires SPEECH_ENDPOINT with custom subdomain (e.g. https://myresource.cognitiveservices.azure.com). Set it in .env")
     st.stop()
 
-# Pre-warm credential & first token at startup
-if use_token_auth:
-    _initial_token = get_speech_token()  # forces credential + token acquisition
-    print(f"[INIT] Azure AD credential initialized, token acquired (length={len(_initial_token)})")
-
-if use_token_auth and "auth_logged" not in st.session_state:
+if "auth_logged" not in st.session_state:
     st.session_state.auth_logged = True
-    print("[AUTH] Using Azure AD token authentication (no API key)")
-elif not use_token_auth and "auth_logged" not in st.session_state:
-    st.session_state.auth_logged = True
-    print("[AUTH] Using API key authentication")
+    if use_token_auth:
+        print("[AUTH] Using Azure AD token authentication (no API key)")
+    else:
+        print("[AUTH] Using API key authentication")
 
 # Constants
 PRIMARY_LANGUAGE = "es-ES"  # Main language (Spanish)
@@ -170,14 +165,6 @@ def get_synthesizer() -> speechsdk.SpeechSynthesizer:
         speech_config=speech_config,
         audio_config=audio_config
     )
-
-# ------------------- eager initialization at startup ----------
-# Pre-create all cached resources so the first recognition/synthesis is fast
-_speech_config = get_speech_config()
-_audio_output  = get_audio_output_config()
-_audio_input   = get_audio_input_config()
-_synthesizer   = get_synthesizer()
-print("[INIT] All Speech SDK resources pre-initialized")
 
 # ------------------- optimized synthesize function ------------
 def build_ssml(text: str, target_lang: str, voice_choice: str) -> str:
