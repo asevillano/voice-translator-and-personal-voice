@@ -120,7 +120,7 @@ COMPANY_NAME=<your-company>
 
 ```
 ┌─────────────────────┐
-│      .env file       │
+│      .env file      │
 ├─────────────────────┤
 │ SPEECH_KEY          │──► API Key auth header: Ocp-Apim-Subscription-Key
 │ SPEECH_REGION       │──► WebSocket host: {region}.stt.speech.microsoft.com
@@ -135,22 +135,22 @@ COMPANY_NAME=<your-company>
 ## 2. Architecture Overview
 
 ```
-┌───────────┐     WebSocket (wss://)      ┌──────────────────────┐
+┌───────────┐     WebSocket (wss://)       ┌──────────────────────┐
 │ Microphone├────── PCM audio ────────────►│ Azure Speech Service │
 │           │◄───── translation.response ──┤  (Universal V2)      │
 └───────────┘                              └──────────────────────┘
                                                     │
                                            ┌────────▼──────────┐
-                                           │  Translated Text   │
+                                           │  Translated Text  │
                                            └────────┬──────────┘
                                                     │
-                                           ┌────────▼──────────┐
-                                           │  TTS REST API      │
+                                           ┌────────▼────────────┐
+                                           │  TTS REST API       │
                                            │  (regional endpoint)│
-                                           └────────┬──────────┘
+                                           └────────┬────────────┘
                                                     │
                                            ┌────────▼──────────┐
-                                           │  Speaker output    │
+                                           │  Speaker output   │
                                            └───────────────────┘
 ```
 
