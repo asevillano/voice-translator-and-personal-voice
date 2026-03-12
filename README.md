@@ -84,9 +84,32 @@ This demo uses **raw WebSocket + REST API** — no Azure Speech SDK dependency. 
 
 | Demo | Command |
 |---|---|
-| **Simultaneous translator via WebSocket** | `streamlit run simultaneous_translator_ws_app.py` |
+| **Simultaneous translator via WebSocket** (full UI) | `streamlit run simultaneous_translator_ws_app.py` |
+| **Minimal console translator** (Spanish ↔ English) | `python simultaneous_translator_ws.py` |
 
-#### `simultaneous_translator_ws_app.py` — Details
+#### `simultaneous_translator_ws.py` — Minimal Console Demo
+
+A stripped-down, **~250-line** version designed as a learning reference for the WebSocket wire protocol. No UI, no SDK, no TTS — just the core translation loop printing to the console.
+
+- **Auth:** API key only (`SPEECH_KEY` + `SPEECH_REGION` in `.env`)
+- **Languages:** Spanish ↔ English with automatic detection (`DetectContinuous`)
+- **Output:** Live interim hypotheses + final recognised text + translation to the opposite language
+- **Streaming translations:** The server sends translations incrementally with every interim hypothesis — this app displays only the final translation for clarity, but the partial translations are available in the same response and could be used for live subtitles
+- **Auto-reconnect:** Exponential backoff on disconnect (ping/pong timeout, network drop)
+- **Dependencies:** `websocket-client`, `sounddevice`, `numpy`, `python-dotenv`
+
+Example output:
+```
+  [09:15:24] ✅  [en-US] Hello, how are you?
+  [09:15:24] 📝  [es]  → Hola, ¿cómo estás?
+
+  [09:15:31] ✅  [es-ES] Estoy bien, gracias.
+  [09:15:31] 📝  [en]  → I'm fine, thank you.
+```
+
+> 📖 The source code is heavily commented to explain every step of the WebSocket protocol. See also [`HOW_TO_USE_SPEECH_TRANSLATION_WEBSOCKETS.md`](HOW_TO_USE_SPEECH_TRANSLATION_WEBSOCKETS.md) for the full protocol reference.
+
+#### `simultaneous_translator_ws_app.py` — Full-Featured Demo
 
 **Architecture:**
 

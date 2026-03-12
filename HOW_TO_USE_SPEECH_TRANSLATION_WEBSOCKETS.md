@@ -20,6 +20,7 @@ This guide explains how to perform **real-time speech translation** using Azure'
 10. [TTS for Translated Text](#10-tts-for-translated-text)
 11. [Complete Python Example](#11-complete-python-example)
 12. [Troubleshooting](#12-troubleshooting)
+13. [Minimal Console Demo: `simultaneous_translator_ws.py`](#13-minimal-console-demo-simultaneous_translator_wspy)
 
 ---
 
@@ -548,9 +549,29 @@ This is where translations arrive. The JSON structure (discovered via SDK diagno
 
 > ⚠️ **Common pitfall:** The `Translations` array is at the **root level** of the response, **not** nested inside `SpeechPhrase`. This is a frequent source of "translation missing" bugs.
 
-### Hypothesis messages (interim / partial)
+### Hypothesis messages (interim / partial) — Streaming translations
 
 For `translation.response` messages that contain `SpeechHypothesis` instead of `SpeechPhrase`, the same root-level `Translations` structure applies, but these are partial results that will be superseded by the final phrase.
+
+**This means translations are streamed in real time**, not just delivered once at the end of an utterance.  As the user speaks, the server sends frequent `SpeechHypothesis` updates — each one carrying an updated `Translations[]` array with the partial translation of the text recognised so far.
+
+| Message type | `Extensions` contains | `Translations[]` | When sent |
+|---|---|---|---|
+| Interim hypothesis | `SpeechHypothesis` | ✅ Partial (updates as user speaks) | Every few hundred ms |
+| Final phrase | `SpeechPhrase` | ✅ Final (definitive) | Once per utterance |
+
+For example, as the user says "Hello, how are you?":
+
+```
+→ SpeechHypothesis: "Hello"         → Translations: [{es: "Hola"}]
+→ SpeechHypothesis: "Hello how"     → Translations: [{es: "Hola cómo"}]
+→ SpeechHypothesis: "Hello how are" → Translations: [{es: "Hola cómo estás"}]
+→ SpeechPhrase:     "Hello, how are you?" → Translations: [{es: "Hola, ¿cómo estás?"}]
+```
+
+This enables **live subtitle** experiences where the translation updates on screen as the user speaks, rather than waiting for a full sentence.  To use this, simply extract `wrapper["Translations"]` from hypothesis messages the same way you would from final phrases.
+
+> 💡 The `simultaneous_translator_ws.py` minimal demo intentionally displays only the final translation for console clarity, but the interim translations are received and could be displayed.  See the `on_message` comments in the source code for a code snippet showing how to extract them.
 
 ### Python handler
 
@@ -791,6 +812,91 @@ Then search the log for:
 - `connectionUrl=` — the exact WebSocket URL
 - `translation.response` — the server response format
 - `RESULT-Json` — the parsed translation result
+
+---
+
+## 13. Minimal Console Demo: `simultaneous_translator_ws.py`
+
+The repository includes a **minimal, heavily-commented console application** (~250 lines) that demonstrates the complete WebSocket translation flow without any UI framework, TTS, or Entra ID complexity.  It is designed as a **learning reference** for the wire protocol documented above.
+
+### What it does
+
+```
+Microphone → WebSocket → Azure Speech Translation → Console output
+```
+
+1. Connects to `wss://{region}.stt.speech.microsoft.com/stt/speech/universal/v2`
+2. Sends `speech.config` + `speech.context` (with auto-detect for Spanish and English)
+3. Streams microphone audio as 16 kHz / 16-bit / mono PCM
+4. Prints interim hypotheses (overwriting on the same line) and final translations
+
+### What it intentionally omits
+
+| Feature | Included? | Why |
+|---|---|---|
+| WebSocket protocol | ✅ | Core of the demo |
+| Automatic language detection | ✅ | `DetectContinuous` for es-ES / en-US |
+| API key auth | ✅ | Simplest auth method |
+| Streamlit UI | ❌ | Console-only for clarity |
+| Entra ID / compound tokens | ❌ | See `simultaneous_translator_ws_app.py` |
+| TTS (text-to-speech) | ❌ | See `simultaneous_translator_ws_app.py` |
+| Microphone mute (pycaw) | ❌ | Only needed with TTS |
+| Multi-language (>2) | ❌ | Hardcoded to Spanish ↔ English |
+
+### Prerequisites
+
+```bash
+pip install websocket-client sounddevice numpy python-dotenv
+```
+
+### Configuration
+
+Only two variables in `.env`:
+
+```dotenv
+SPEECH_KEY=your-api-key-here
+SPEECH_REGION=westeurope
+```
+
+### Running
+
+```bash
+python simultaneous_translator_ws.py
+```
+
+Speak in Spanish or English.  The app detects the language automatically and prints the translation to the opposite language:
+
+```
+🔌  Connecting to wss://westeurope.stt.speech.microsoft.com/stt/speech/universal/v2…
+✅  WebSocket connected
+🎤  Microphone open — speak in Spanish or English (Ctrl+C to stop)
+
+  [09:15:23] 🎤  Hypothesis: Hello how are
+  [09:15:24] ✅  [en-US] Hello, how are you?
+  [09:15:24] 📝  [es]  → Hola, ¿cómo estás?
+
+  [09:15:30] 🎤  Hypothesis: Estoy bien gra
+  [09:15:31] ✅  [es-ES] Estoy bien, gracias.
+  [09:15:31] 📝  [en]  → I'm fine, thank you.
+
+⏹️  Stopped by user
+👋  Bye!
+```
+
+### Key code sections
+
+The source file is organized into clearly-commented sections:
+
+| Section | Lines (approx.) | Description |
+|---|---|---|
+| **Configuration** | 1–80 | Environment loading, audio constants, language setup |
+| **Protocol helpers** | 80–180 | `_text_msg()`, `_audio_msg()`, `_parse_msg()`, `_wav_header()` — builds/parses Speech Protocol frames |
+| **`on_open` callback** | 180–280 | Sends `speech.config` + `speech.context` with detailed comments on every field |
+| **`on_message` callback** | 280–340 | Routes incoming messages; shows hypotheses and final translations |
+| **`_handle_final()`** | 340–400 | Extracts `SpeechPhrase`, detects language, finds opposite-language translation |
+| **Microphone capture** | 400–end | `sounddevice.InputStream` callback, WAV header on first chunk, graceful shutdown |
+
+> 💡 Read the source code alongside this document — the comments in `simultaneous_translator_ws.py` reference the same protocol concepts explained here.
 
 ---
 
