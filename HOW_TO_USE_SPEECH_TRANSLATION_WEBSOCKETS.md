@@ -15,12 +15,13 @@ This guide explains how to perform **real-time speech translation** using Azure'
 5. [Speech Protocol Messages](#5-speech-protocol-messages)
 6. [Option A: Fixed Source Language](#6-option-a-fixed-source-language)
 7. [Option B: Auto-Detect Source Language](#7-option-b-auto-detect-source-language)
-8. [Sending Audio](#8-sending-audio)
-9. [Handling Server Responses](#9-handling-server-responses)
-10. [TTS for Translated Text](#10-tts-for-translated-text)
-11. [Complete Python Example](#11-complete-python-example)
-12. [Troubleshooting](#12-troubleshooting)
-13. [Minimal Console Demo: `simultaneous_translator_ws.py`](#13-minimal-console-demo-simultaneous_translator_wspy)
+8. [Phrase Segmentation Strategy](#8-phrase-segmentation-strategy)
+9. [Sending Audio](#9-sending-audio)
+10. [Handling Server Responses](#10-handling-server-responses)
+11. [TTS for Translated Text](#11-tts-for-translated-text)
+12. [Complete Python Example](#12-complete-python-example)
+13. [Troubleshooting](#13-troubleshooting)
+14. [Minimal Console Demo: `simultaneous_translator_ws.py`](#14-minimal-console-demo-simultaneous_translator_wspy)
 
 ---
 
@@ -417,7 +418,106 @@ This tells the server that phrase results should come through the **translation 
 
 ---
 
-## 8. Sending Audio
+## 8. Phrase Segmentation Strategy
+
+By default, the Azure Speech service uses **silence-based segmentation** to decide when an utterance ends: it listens for a silence gap and then emits a final `SpeechPhrase`. This can cause two problems:
+
+- **Over-segmentation:** A brief pause mid-sentence triggers a premature phrase boundary.
+- **Under-segmentation:** A speaker who talks continuously without pauses produces a very long "wall of text" before the service emits a final result.
+
+**Semantic segmentation** solves both issues by using sentence-ending punctuation (`.`, `?`, `!`) as the primary segmentation signal instead of silence alone. This is the WebSocket equivalent of the SDK property:
+
+```python
+# SDK equivalent (for reference — not used in the WebSocket approach)
+speech_config.set_property(speechsdk.PropertyId.Speech_SegmentationStrategy, "Semantic")
+```
+
+### Configuring segmentation via WebSocket
+
+Segmentation is configured inside the `phraseDetection` block of the `speech.context` message, nested under the sub-object that matches the recognition mode (`conversation`, `interactive`, or `dictation`).
+
+For `CONVERSATION` mode (the most common for translation):
+
+```json
+"phraseDetection": {
+    "mode": "CONVERSATION",
+    "conversation": {
+        "segmentation": {
+            "mode": "Semantic"
+        }
+    },
+    "onSuccess": { "action": "Translate" },
+    "onInterim": { "action": "Translate" }
+}
+```
+
+### Segmentation modes
+
+| `segmentation.mode` | Description |
+|---|---|
+| `"Normal"` | Default silence-based segmentation |
+| `"Semantic"` | Segments on sentence-ending punctuation (`.`, `?`, `!`) — reduces over/under-segmentation |
+| `"Custom"` | Lets you set explicit silence timeouts (see below) |
+| `"Disabled"` | No automatic segmentation |
+
+> **Discovery note:** These values were found in the [Speech SDK JS source code](https://github.com/microsoft/cognitive-services-speech-sdk-js/blob/master/src/common.speech/ServiceMessages/PhraseDetection/Segmentation.ts), which defines the `SegmentationMode` enum with values `Normal`, `Semantic`, `Custom`, and `Disabled`.
+
+### Custom segmentation with explicit timeouts
+
+When using `"Custom"` mode, you can control the silence timeout and a forced maximum time:
+
+```json
+"phraseDetection": {
+    "mode": "CONVERSATION",
+    "conversation": {
+        "segmentation": {
+            "mode": "Custom",
+            "segmentationSilenceTimeoutMs": 1500,
+            "segmentationForcedTimeoutMs": 30000
+        }
+    },
+    "onSuccess": { "action": "Translate" },
+    "onInterim": { "action": "Translate" }
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `segmentationSilenceTimeoutMs` | `number` | Milliseconds of silence before the service considers the phrase complete |
+| `segmentationForcedTimeoutMs` | `number` | Maximum milliseconds before forcing a phrase boundary, even if the speaker hasn't paused |
+
+### Segmentation with other recognition modes
+
+The `segmentation` object nests under the mode sub-object. For `INTERACTIVE` or `DICTATION` modes:
+
+```json
+// Interactive mode
+"phraseDetection": {
+    "mode": "Interactive",
+    "interactive": {
+        "segmentation": { "mode": "Semantic" }
+    }
+}
+
+// Dictation mode
+"phraseDetection": {
+    "mode": "Dictation",
+    "dictation": {
+        "segmentation": { "mode": "Semantic" }
+    }
+}
+```
+
+### Limitations
+
+- Semantic segmentation is only intended for **continuous recognition** (not single-shot).
+- It is **not available for all languages and locales**.
+- It does **not support confidence scores or NBest lists** — avoid using it if you rely on those.
+- Requires Speech service equivalent to SDK version **1.41 or later**.
+
+---
+
+## 9. Sending Audio
 
 ### Audio format
 
@@ -490,7 +590,7 @@ ws.send(audio_msg(request_id, b""), opcode=websocket.ABNF.OPCODE_BINARY)
 
 ---
 
-## 9. Handling Server Responses
+## 10. Handling Server Responses
 
 ### Message paths
 
@@ -604,7 +704,7 @@ def on_message(ws, message):
 
 ---
 
-## 10. TTS for Translated Text
+## 11. TTS for Translated Text
 
 Once you have the translated text, synthesize it via the TTS REST API:
 
@@ -659,7 +759,7 @@ stream.close()
 
 ---
 
-## 11. Complete Python Example
+## 12. Complete Python Example
 
 ### Minimal fixed-language translator
 
@@ -761,7 +861,7 @@ ws.run_forever(ping_interval=20)
 
 ---
 
-## 12. Troubleshooting
+## 13. Troubleshooting
 
 ### Common issues and solutions
 
@@ -815,7 +915,7 @@ Then search the log for:
 
 ---
 
-## 13. Minimal Console Demo: `simultaneous_translator_ws.py`
+## 14. Minimal Console Demo: `simultaneous_translator_ws.py`
 
 The repository includes a **minimal, heavily-commented console application** (~250 lines) that demonstrates the complete WebSocket translation flow without any UI framework, TTS, or Entra ID complexity.  It is designed as a **learning reference** for the wire protocol documented above.
 

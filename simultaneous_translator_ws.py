@@ -383,8 +383,25 @@ def _run_session(ws_url: str, stop_event: threading.Event) -> bool:
             # mode: "CONVERSATION" — must be UPPERCASE (SDK wire format).
             # onSuccess/onInterim → "Translate": tells the service to
             # run translation on both final and interim results.
+            #
+            # conversation.segmentation: controls how the service decides
+            #   when an utterance (phrase) ends.  Modes:
+            #     "Normal"   — default silence-based segmentation
+            #     "Semantic" — segments on sentence-ending punctuation
+            #                  (e.g. '.', '?') instead of silence alone,
+            #                  reducing over/under-segmentation
+            #     "Custom"   — lets you set segmentationSilenceTimeoutMs
+            #                  and segmentationForcedTimeoutMs manually
+            #     "Disabled" — no automatic segmentation
+            #   This is the WebSocket equivalent of the SDK property:
+            #     Speech_SegmentationStrategy = "Semantic"
             "phraseDetection": {
                 "mode": "CONVERSATION",
+                "conversation": {
+                    "segmentation": {
+                        "mode": "Semantic",
+                    }
+                },
                 "onSuccess": {"action": "Translate"},
                 "onInterim": {"action": "Translate"},
             },
